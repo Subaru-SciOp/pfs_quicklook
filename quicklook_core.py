@@ -97,7 +97,61 @@ def get_butler(datastore: str, base_collection: str, visit: int) -> "Butler":
     if Butler is None:
         raise RuntimeError("Butler is not available. Check LSST/PFS environment setup.")
     cols = collections_for_visit(base_collection, visit)
-    return Butler(datastore, collections=cols)
+    return Butler(datastore, collections=cols, writeable=False)
+
+
+def discover_visits(
+    datastore: str, base_collection: str, obsdate_utc: str | None = None
+):
+    """
+    Discover available visits from the Butler datastore for a given observation date.
+
+    Parameters
+    ----------
+    datastore : str
+        Path to Butler datastore
+    base_collection : str
+        Base collection name (e.g., "u/obsproc/s25a/20250520b")
+    obsdate_utc : str, optional
+        Observation date in "YYYY-MM-DD" format. If None, uses get_current_obsdate()
+
+    Returns
+    -------
+    list of int
+        Sorted list of available visit numbers
+    """
+    if Butler is None:
+        raise RuntimeError("Butler is not available. Check LSST/PFS environment setup.")
+
+    if obsdate_utc is None:
+        obsdate_utc = get_current_obsdate()
+
+    logger.info(f"Discovering visits for date: {obsdate_utc}")
+
+    try:
+        # Create Butler with wildcard collection pattern to search all subcollections
+        # The actual data is stored in base_collection/visit subdirectories
+        butler = Butler(datastore, writeable=False)
+
+        # Query for pfsConfig datasets to find available visits
+        # collection name is like "u/obsproc/s25a/20250520b/123456" for onsite processing
+        collections = butler.registry.queryCollections(
+            os.path.join(base_collection, "??????")
+        )
+
+        # Extract visit numbers and convert to integers
+        visits = [int(coll.split("/")[-1]) for coll in collections]
+
+        # Sort and return as list
+        visit_list = sorted(visits)
+        logger.info(f"Found {len(visit_list)} visits under {base_collection}")
+
+        return visit_list
+
+    except Exception as e:
+        logger.error(f"Error discovering visits: {e}")
+        logger.warning("Falling back to empty visit list")
+        return []
 
 
 def load_visit_data(datastore: str, base_collection: str, visit: int):
@@ -132,7 +186,9 @@ def load_visit_data(datastore: str, base_collection: str, visit: int):
     for ob_code in obcode_to_fibers:
         obcode_to_fibers[ob_code] = sorted(obcode_to_fibers[ob_code])
 
-    logger.info(f"Loaded visit {visit}: {len(pfsConfig.fiberId)} fibers, {len(obcode_to_fibers)} OB codes")
+    logger.info(
+        f"Loaded visit {visit}: {len(pfsConfig.fiberId)} fibers, {len(obcode_to_fibers)} OB codes"
+    )
 
     return pfsConfig, obcode_to_fibers, fiber_to_obcode
 

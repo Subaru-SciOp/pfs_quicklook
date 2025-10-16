@@ -17,6 +17,7 @@ from quicklook_core import (
     OBSDATE_UTC,
     build_1d_bokeh_figure_single_visit,
     build_2d_figure,
+    discover_visits,
     get_current_obsdate,
     load_visit_data,
     reload_config,
@@ -121,7 +122,9 @@ def load_data_callback(event=None):
 
     try:
         status_text.object = f"**Loading visit {visit}...**"
-        pfsConfig, obcode_to_fibers, fiber_to_obcode = load_visit_data(DATASTORE, BASE_COLLECTION, visit)
+        pfsConfig, obcode_to_fibers, fiber_to_obcode = load_visit_data(
+            DATASTORE, BASE_COLLECTION, visit
+        )
 
         # Update session cache
         pn.state.cache["visit_data"] = {
@@ -216,9 +219,7 @@ def on_fiber_change(event):
     obcode_mc.value = sorted(obcodes)
     pn.state.cache["programmatic_update"] = False
 
-    logger.info(
-        f"Selected {len(obcodes)} OB codes from {len(selected_fibers)} fibers"
-    )
+    logger.info(f"Selected {len(obcodes)} OB codes from {len(selected_fibers)} fibers")
 
 
 def plot_2d_callback(event=None):
@@ -405,6 +406,22 @@ pn.template.FastListTemplate(
 ).servable()
 
 
-# Bootstrap options (dummy)
-visit_mc.options = [126714, 126715, 126716, 126717]
-visit_mc.value = [126714]
+# Discover available visits from Butler
+logger.info(
+    f"Discovering visits for observation date: {OBSDATE_UTC or get_current_obsdate()}"
+)
+discovered_visits = discover_visits(
+    DATASTORE,
+    BASE_COLLECTION,
+    OBSDATE_UTC,
+)
+
+if discovered_visits:
+    visit_mc.options = discovered_visits
+    # visit_mc.value = [discovered_visits[0]]  # Select first visit by default
+    visit_mc.value = []
+    logger.info(f"Loaded {len(discovered_visits)} visits")
+else:
+    logger.warning("No visits discovered. Visit list will be empty.")
+    visit_mc.options = []
+    visit_mc.value = []
