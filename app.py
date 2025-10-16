@@ -99,7 +99,7 @@ btn_plot_2d = pn.widgets.Button(name="Plot 2D", button_type="primary", disabled=
 btn_plot_1d = pn.widgets.Button(name="Plot 1D", button_type="primary", disabled=True)
 btn_reset = pn.widgets.Button(name="Reset")
 
-status_text = pn.pane.Markdown("**Ready**", sizing_mode="stretch_width")
+status_text = pn.pane.Markdown("**Ready**", sizing_mode="stretch_width", height=60)
 
 # --- Output panes ---
 pane_2d = pn.pane.Matplotlib(height=700, sizing_mode="scale_width")
