@@ -100,6 +100,34 @@ def get_butler(datastore: str, base_collection: str, visit: int) -> "Butler":
     return Butler(datastore, collections=cols)
 
 
+def load_visit_data(datastore: str, base_collection: str, visit: int):
+    """
+    Load visit data and create OB Code to Fiber ID mapping.
+
+    Returns:
+        tuple: (pfsConfig, obcode_to_fibers_dict)
+            - pfsConfig: PfsConfig object
+            - obcode_to_fibers_dict: dict mapping OB codes to lists of fiber IDs
+    """
+    b = get_butler(datastore, base_collection, visit)
+    pfsConfig = b.get("pfsConfig", visit=visit)
+
+    # Create OB Code -> Fiber ID mapping
+    obcode_to_fibers = {}
+    for fiber_id, ob_code in zip(pfsConfig.fiberId, pfsConfig.obCode):
+        if ob_code not in obcode_to_fibers:
+            obcode_to_fibers[ob_code] = []
+        obcode_to_fibers[ob_code].append(int(fiber_id))
+
+    # Sort fiber IDs for each OB code
+    for ob_code in obcode_to_fibers:
+        obcode_to_fibers[ob_code] = sorted(obcode_to_fibers[ob_code])
+
+    logger.info(f"Loaded visit {visit}: {len(pfsConfig.fiberId)} fibers, {len(obcode_to_fibers)} OB codes")
+
+    return pfsConfig, obcode_to_fibers
+
+
 # --- 2D image builder ---
 def build_2d_figure(
     datastore: str,
