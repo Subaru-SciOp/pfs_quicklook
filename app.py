@@ -44,6 +44,7 @@ def on_session_created():
             "visit": None,
             "pfsConfig": None,
             "obcode_to_fibers": {},
+            "fiber_to_obcode": {},
         }
     if "programmatic_update" not in pn.state.cache:
         pn.state.cache["programmatic_update"] = False
@@ -120,7 +121,7 @@ def load_data_callback(event=None):
 
     try:
         status_text.object = f"**Loading visit {visit}...**"
-        pfsConfig, obcode_to_fibers = load_visit_data(DATASTORE, BASE_COLLECTION, visit)
+        pfsConfig, obcode_to_fibers, fiber_to_obcode = load_visit_data(DATASTORE, BASE_COLLECTION, visit)
 
         # Update session cache
         pn.state.cache["visit_data"] = {
@@ -128,6 +129,7 @@ def load_data_callback(event=None):
             "visit": visit,
             "pfsConfig": pfsConfig,
             "obcode_to_fibers": obcode_to_fibers,
+            "fiber_to_obcode": fiber_to_obcode,
         }
 
         # Update OB Code options
@@ -186,6 +188,36 @@ def on_obcode_change(event):
 
     logger.info(
         f"Selected {len(fiber_ids)} fibers from {len(selected_obcodes)} OB codes"
+    )
+
+
+def on_fiber_change(event):
+    """Update OB Code selection based on Fiber ID selection"""
+    if pn.state.cache.get("programmatic_update", False):
+        return
+
+    if not pn.state.cache["visit_data"]["loaded"]:
+        return
+
+    selected_fibers = fibers_mc.value
+    if not selected_fibers:
+        return
+
+    # Get OB codes for selected fiber IDs
+    fiber_to_obcode = pn.state.cache["visit_data"]["fiber_to_obcode"]
+    obcodes = set()
+    for fiber_id in selected_fibers:
+        obcode = fiber_to_obcode.get(fiber_id)
+        if obcode:
+            obcodes.add(obcode)
+
+    # Update OB code selection
+    pn.state.cache["programmatic_update"] = True
+    obcode_mc.value = sorted(obcodes)
+    pn.state.cache["programmatic_update"] = False
+
+    logger.info(
+        f"Selected {len(obcodes)} OB codes from {len(selected_fibers)} fibers"
     )
 
 
@@ -299,15 +331,17 @@ def reset_app(event=None):
         "visit": None,
         "pfsConfig": None,
         "obcode_to_fibers": {},
+        "fiber_to_obcode": {},
     }
 
     # Disable plot buttons
     btn_plot_2d.disabled = True
     btn_plot_1d.disabled = True
 
-    # Clear OB Code options
+    # Clear OB Code and Fiber ID selections
     obcode_mc.options = []
     obcode_mc.value = []
+    fibers_mc.value = []
 
 
 # Connect callbacks
@@ -316,6 +350,7 @@ btn_plot_2d.on_click(plot_2d_callback)
 btn_plot_1d.on_click(plot_1d_callback)
 btn_reset.on_click(reset_app)
 obcode_mc.param.watch(on_obcode_change, "value")
+fibers_mc.param.watch(on_fiber_change, "value")
 
 
 # --- Layout ---
