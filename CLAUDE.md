@@ -12,6 +12,7 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
 - **Web Framework**: Panel-based web application ([app.py](app.py))
 - **Core Functions**: Modular spectral processing functions ([quicklook_core.py](quicklook_core.py))
 - **Butler Integration**: LSST Data Butler integration for data retrieval
+- **Visit Discovery**: Automatic visit discovery from Butler datastore based on base collection ([quicklook_core.py:103-152](quicklook_core.py#L103-L152))
 - **Launch Script**: Bash script to set up environment and launch app ([launch_app.bash](launch_app.bash))
 - **Session Management**: Per-session data caching using `pn.state.cache` for multi-user support
 
@@ -135,17 +136,11 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
    - Warning shown when user attempts to enable
    - Overlay code exists but commented out ([quicklook_core.py:201-217](quicklook_core.py#L201-L217))
 
-3. **Visit Discovery**:
-   - Currently using hardcoded test visits (126714-126717) for initial options
-   - No automatic visit discovery from datastore
-   - No date-based filtering
-   - Future: implement Butler query to discover available visits
-
-4. **Export Functionality**:
+3. **Export Functionality**:
    - Not yet implemented
    - Future: PNG export for 2D images, PNG/HTML export for 1D plots
 
-5. **Options Panel**:
+4. **Options Panel**:
    - Options widgets exist but are commented out in layout
    - Widgets still functional via default values:
      - Sky subtraction: True
@@ -153,7 +148,7 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
      - Scale: zscale
    - Can be uncommented to expose in UI
 
-6. **Multi-visit Stacking**:
+5. **Multi-visit Stacking**:
    - Original notebook supports stacking multiple visits
    - Not yet implemented in web app
    - Future feature for S/N improvement
@@ -181,14 +176,21 @@ pfs_quicklook/
 
 #### quicklook_core.py
 
-**`load_visit_data(datastore, base_collection, visit)`** ([quicklook_core.py:103-137](quicklook_core.py#L103-L137)):
+**`discover_visits(datastore, base_collection, obsdate_utc)`** ([quicklook_core.py:103-152](quicklook_core.py#L103-L152)):
+- Discovers available visits from Butler datastore
+- Uses Butler registry to query collections matching `base_collection/??????` pattern (6-digit visit numbers)
+- Parameters: datastore, base_collection, obsdate_utc (optional, for future filtering)
+- Returns: Sorted list of visit numbers (as integers)
+- Called on app startup to populate visit selection widget
+
+**`load_visit_data(datastore, base_collection, visit)`** ([quicklook_core.py:155-200](quicklook_core.py#L155-L200)):
 - Loads pfsConfig for specified visit
 - Creates bidirectional mappings:
   - `obcode_to_fibers`: dict mapping OB codes to lists of fiber IDs
   - `fiber_to_obcode`: dict mapping fiber IDs to OB codes
 - Returns: `(pfsConfig, obcode_to_fibers, fiber_to_obcode)`
 
-**`build_2d_figure(...)`** ([quicklook_core.py:140-252](quicklook_core.py#L140-L252)):
+**`build_2d_figure(...)`** ([quicklook_core.py:203-350](quicklook_core.py#L203-L350)):
 - Creates 2D spectral image with optional sky subtraction
 - Parameters: datastore, base_collection, visit, spectrograph, arm, subtract_sky, overlay, fiber_ids, scale_algo
 - Returns: Matplotlib Figure object
@@ -285,19 +287,13 @@ pfs_quicklook/
 
 ### High Priority
 
-1. **Automatic Visit Discovery**
-   - Implement Butler query to discover available visits
-   - Add date filtering (use current UTC date by default)
-   - Auto-refresh visit list on app load or manual trigger
-   - Replace hardcoded test visits with dynamic discovery
-
-2. **Complete DetectorMap Overlay**
+1. **Complete DetectorMap Overlay**
    - Uncomment and debug overlay code in `build_2d_figure()`
    - Test with selected fiber IDs
    - Add default behavior (highlight SCIENCE + observatoryfiller fibers)
    - Integrate with OB Code/Fiber ID selection
 
-3. **Multi-arm/Multi-spectrograph Support**
+2. **Multi-arm/Multi-spectrograph Support**
    - Remove single-arm/spectrograph limitation
    - Options:
      - Multiple 2D/1D tabs for each arm/spectrograph combination
@@ -305,13 +301,18 @@ pfs_quicklook/
      - Sequential processing with combined display
    - Update core functions to handle multiple data IDs in parallel
 
-4. **Export Functionality**
+3. **Export Functionality**
    - Implement PNG export for 2D images
    - Implement PNG/HTML export for 1D Bokeh plots
    - Consider PDF export for reports
    - Add export buttons to UI
 
 ### Medium Priority
+
+4. **Enhanced Visit Discovery**
+   - Add date-based filtering using `OBSDATE_UTC` parameter
+   - Implement manual refresh button for visit list
+   - Add visit metadata display (date, time, program info)
 
 5. **Multi-visit Stacking**
    - Port stacking functionality from notebook ([check_quick_reduction_data.py:288-470](check_quick_reduction_data.py#L288-L470))
@@ -408,15 +409,26 @@ Valid fiber IDs: 1-2394
 - Color palette: Category10_10 (cycles through 10 colors)
 
 ### MultiChoice Widget Options
-- **Visit**: No limits (all options shown)
+- **Visit**: No limits (all options shown), dynamically populated on startup
 - **OB Code**: `option_limit=20`, `search_option_limit=10`
 - **Fiber ID**: `option_limit=20`, `search_option_limit=10`
+
+### Application Startup Process
+On application startup ([app.py:409-420](app.py#L409-L420)):
+1. Loads environment configuration from `.env` file
+2. Calls `discover_visits()` to query Butler for available visits
+3. Populates visit MultiChoice widget with discovered visits
+4. If visits are found, widget is ready for selection (no default selection)
+5. If no visits are found, warning is logged and widget remains empty
 
 ## Testing & Debugging
 
 ### Test Data
-Current test visits in use: 126714, 126715, 126716, 126717
-These are hardcoded in [app.py:378-379](app.py#L378-L379) for bootstrap purposes.
+Visit discovery is now automatic based on Butler collections.
+The `.env` file controls which base collection is searched:
+- `PFS_DATASTORE`: Path to Butler datastore
+- `PFS_BASE_COLLECTION`: Base collection (e.g., `u/obsproc/s25a/20250520b`)
+- `PFS_OBSDATE_UTC`: Observation date (currently for logging only, not yet used for filtering)
 
 ### Logging
 Application uses loguru for logging. Check console output for detailed information:
@@ -486,9 +498,28 @@ python -m panel serve app.py --address 0.0.0.0 --allow-websocket-origin=pfsa-usr
 python3 -m pip install --target "$LSST_PYTHON_USERLIB" panel watchfiles loguru ipywidgets_bokeh ipympl
 ```
 
-## Recent Changes (2025-01)
+## Recent Changes
 
-### Major UI/UX Improvements
+### 2025-10: Automatic Visit Discovery
+
+1. **Visit Discovery Implementation** ([quicklook_core.py:103-152](quicklook_core.py#L103-L152)):
+   - Added `discover_visits()` function to query Butler registry
+   - Uses pattern matching (`base_collection/??????`) to find 6-digit visit numbers
+   - Automatically populates visit widget on app startup
+   - Replaces hardcoded test visits with dynamic discovery
+
+2. **Configuration-based Visit Loading** ([app.py:409-420](app.py#L409-L420)):
+   - Reads `PFS_BASE_COLLECTION` from `.env` file
+   - Discovers all available visits in the specified collection
+   - Logs discovery process for debugging
+   - Graceful fallback to empty list if no visits found
+
+3. **Future Enhancements**:
+   - `OBSDATE_UTC` parameter preserved for future date-based filtering
+   - Manual refresh button for visit list (planned)
+   - Visit metadata display (planned)
+
+### 2025-01: Major UI/UX Improvements
 
 1. **Separated Workflow** (Load → Select → Plot):
    - Split single "Run" button into three independent buttons
