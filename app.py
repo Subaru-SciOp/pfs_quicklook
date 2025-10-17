@@ -21,6 +21,7 @@ from quicklook_core import (
     OBSDATE_UTC,
     VISIT_REFRESH_INTERVAL,
     build_1d_bokeh_figure_single_visit,
+    build_1d_spectra_as_image,
     build_2d_arrays_multi_arm,
     create_holoviews_from_arrays,
     discover_visits,
@@ -77,10 +78,31 @@ scale_sel = pn.widgets.Select(
     name="Scale", options=["zscale", "minmax"], value="zscale"
 )
 
-btn_load_data = pn.widgets.Button(name="Load Data", button_type="primary")
-btn_plot_2d = pn.widgets.Button(name="Plot 2D", button_type="primary", disabled=True)
-btn_plot_1d = pn.widgets.Button(name="Plot 1D", button_type="primary", disabled=True)
-btn_reset = pn.widgets.Button(name="Reset")
+btn_load_data = pn.widgets.Button(
+    name="Load Data",
+    button_type="primary",
+    # icon="reload",
+    # icon_size="18px",
+)
+btn_plot_2d = pn.widgets.Button(
+    name="Show 2D Images",
+    button_type="primary",
+    disabled=True,
+    sizing_mode="stretch_width",
+)
+btn_plot_1d = pn.widgets.Button(
+    name="Show 1D Spectra",
+    button_type="primary",
+    disabled=True,
+    sizing_mode="stretch_width",
+)
+btn_plot_1d_image = pn.widgets.Button(
+    name="Show 1D Image",
+    button_type="primary",
+    disabled=True,
+    sizing_mode="stretch_width",
+)
+btn_reset = pn.widgets.Button(name="Reset", sizing_mode="stretch_width")
 
 status_text = pn.pane.Markdown("**Ready**", sizing_mode="stretch_width", height=60)
 
@@ -89,9 +111,16 @@ status_text = pn.pane.Markdown("**Ready**", sizing_mode="stretch_width", height=
 pane_2d = pn.Column(sizing_mode="scale_width")
 # pane_1d holds Bokeh figures
 pane_1d = pn.Column(height=550, sizing_mode="scale_width")
+# pane_1d_image holds HoloViews image of all 1D spectra
+pane_1d_image = pn.Column(sizing_mode="scale_width")
 log_md = pn.pane.Markdown("**Ready.**")
 
-tabs = pn.Tabs(("2D", pane_2d), ("1D", pane_1d), ("Log", log_md))
+tabs = pn.Tabs(
+    ("2D Images", pane_2d),
+    ("1D Image", pane_1d_image),
+    ("1D Spectra", pane_1d),
+    ("Log", log_md),
+)
 
 
 # --- Callbacks ---
@@ -128,6 +157,7 @@ def load_data_callback(event=None):
         # Enable plot buttons
         btn_plot_2d.disabled = False
         btn_plot_1d.disabled = False
+        btn_plot_1d_image.disabled = False
 
         num_fibers = len(pfsConfig.fiberId)
         num_obcodes = len(obcode_to_fibers)
@@ -148,6 +178,7 @@ def load_data_callback(event=None):
         status_text.object = "**Error loading data**"
         btn_plot_2d.disabled = True
         btn_plot_1d.disabled = True
+        btn_plot_1d_image.disabled = True
 
 
 def on_obcode_change(event):
@@ -467,7 +498,7 @@ def plot_1d_callback(event=None):
         )
         pane_1d.append(pn.pane.Bokeh(p_fig1d, sizing_mode="scale_width"))
 
-        tabs.active = 1  # Switch to 1D tab
+        tabs.active = 2  # Switch to 1D tab
         status_text.object = f"**1D plot created for visit {visit}**"
         pn.state.notifications.success("1D plot created")
 
@@ -482,10 +513,56 @@ def plot_1d_callback(event=None):
         status_text.object = "**Error creating 1D plot**"
 
 
+def plot_1d_image_callback(event=None):
+    """Create 2D representation of all 1D spectra"""
+    if not pn.state.cache["visit_data"]["loaded"]:
+        pn.state.notifications.warning("Load data first.")
+        return
+
+    visit = pn.state.cache["visit_data"]["visit"]
+    fibers = list(fibers_mc.value) if fibers_mc.value else None
+    scale_algo = scale_sel.value
+
+    try:
+        status_text.object = "**Creating 1D spectra image...**"
+
+        # Clear existing content
+        pane_1d_image.clear()
+
+        # Build 1D spectra as 2D image
+        hv_img = build_1d_spectra_as_image(
+            datastore=DATASTORE,
+            base_collection=BASE_COLLECTION,
+            visit=visit,
+            fiber_ids=fibers,
+            scale_algo=scale_algo,
+        )
+
+        # Display HoloViews image
+        pane_1d_image.append(pn.pane.HoloViews(hv_img, backend="bokeh"))
+
+        tabs.active = 1  # Switch to 1D Image tab
+        status_text.object = f"**1D spectra image created for visit {visit}**"
+        pn.state.notifications.success("1D spectra image created")
+
+        fiber_info = f"{len(fibers)} selected" if fibers else "all fibers"
+        log_md.object = f"""**1D spectra image created**
+- visit: {visit}
+- fibers: {fiber_info}
+- scale: {scale_algo}
+"""
+    except Exception as e:
+        pane_1d_image.clear()
+        pn.state.notifications.error(f"Failed to create 1D spectra image: {e}")
+        logger.error(f"Failed to create 1D spectra image: {e}")
+        status_text.object = "**Error creating 1D spectra image**"
+
+
 def reset_app(event=None):
     """Reset application state"""
     pane_2d.clear()
     pane_1d.clear()  # Clear Column instead of setting object to None
+    pane_1d_image.clear()
     log_md.object = "**Reset.**"
     status_text.object = "**Ready**"
 
@@ -501,6 +578,7 @@ def reset_app(event=None):
     # Disable plot buttons
     btn_plot_2d.disabled = True
     btn_plot_1d.disabled = True
+    btn_plot_1d_image.disabled = True
 
     # Clear OB Code and Fiber ID selections
     obcode_mc.options = []
@@ -580,8 +658,12 @@ def check_visit_discovery():
             pn.state.notifications.success(f"Found {new_count} visits")
             logger.info(f"Initial visit discovery: {new_count} visits")
         elif new_count > old_count:
-            pn.state.notifications.success(f"Found {new_count - old_count} new visit(s) (total: {new_count})")
-            logger.info(f"Visit list updated: +{new_count - old_count} visits (total: {new_count})")
+            pn.state.notifications.success(
+                f"Found {new_count - old_count} new visit(s) (total: {new_count})"
+            )
+            logger.info(
+                f"Visit list updated: +{new_count - old_count} visits (total: {new_count})"
+            )
         else:
             logger.info(f"Visit list refreshed: {new_count} visits (no changes)")
 
@@ -619,7 +701,9 @@ def trigger_visit_refresh():
         logger.info("Auto-refreshing visit list...")
         pn.state.notifications.info("Updating visit list...", duration=3000)
 
-        thread = threading.Thread(target=discover_visits_worker, args=(state,), daemon=True)
+        thread = threading.Thread(
+            target=discover_visits_worker, args=(state,), daemon=True
+        )
         thread.start()
 
         pn.state.add_periodic_callback(check_visit_discovery, period=500)
@@ -671,7 +755,9 @@ def on_session_created():
         logger.info(
             f"Auto-refresh enabled: visit list will update every {refresh_interval} seconds"
         )
-        pn.state.add_periodic_callback(trigger_visit_refresh, period=refresh_interval_ms)
+        pn.state.add_periodic_callback(
+            trigger_visit_refresh, period=refresh_interval_ms
+        )
 
 
 # Register the callback to run on each session start
@@ -682,6 +768,7 @@ pn.state.onload(on_session_created)
 btn_load_data.on_click(load_data_callback)
 btn_plot_2d.on_click(plot_2d_callback)
 btn_plot_1d.on_click(plot_1d_callback)
+btn_plot_1d_image.on_click(plot_1d_image_callback)
 btn_reset.on_click(reset_app)
 obcode_mc.param.watch(on_obcode_change, "value")
 fibers_mc.param.watch(on_fiber_change, "value")
@@ -713,7 +800,7 @@ sidebar = pn.Column(
     pn.layout.Divider(),  # hline
     #
     # "## Plot",
-    pn.Row(btn_plot_2d, btn_plot_1d, btn_reset),
+    pn.Column(btn_plot_2d, btn_plot_1d_image, btn_plot_1d, btn_reset),
     #
     f"**Base collection:** {BASE_COLLECTION}<br>"
     f"**Datastore:** {DATASTORE}<br>"
