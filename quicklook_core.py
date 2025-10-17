@@ -718,3 +718,194 @@ def build_1d_bokeh_figure_single_visit(
         logger.error(f"Failed to build 1D Bokeh figure: {e}")
 
     return p
+
+
+# --- 1D spectra as 2D image (single visit) ---
+def build_1d_spectra_as_image(
+    datastore: str,
+    base_collection: str,
+    visit: int,
+    fiber_ids=None,
+    scale_algo: str = "zscale",
+):
+    """
+    Create a 2D image representation of all 1D spectra (similar to showAllSpectraAsImage).
+
+    Parameters
+    ----------
+    datastore : str
+        Path to Butler datastore
+    base_collection : str
+        Base collection name
+    visit : int
+        Visit number
+    fiber_ids : list of int, optional
+        Fiber IDs to display. If None, displays all fibers in pfsMerged.
+    scale_algo : str, optional
+        Scaling algorithm: 'zscale' (default) or 'minmax'
+
+    Returns
+    -------
+    hv.Image
+        HoloViews Image object with 2D representation of spectra
+    """
+    try:
+        b = get_butler(datastore, base_collection, visit)
+        pfsConfig = b.get("pfsConfig", visit=visit)
+        pfsMerged = b.get("pfsMerged", visit=visit)
+
+        # Always use all fibers (ignore fiber_ids parameter for this visualization)
+        # This ensures complete overview of all spectra
+        flux_array = pfsMerged.flux
+        wavelength_array = pfsMerged.wavelength
+        fiber_id_array = pfsMerged.fiberId
+
+        n_fibers = len(fiber_id_array)
+        n_wavelength = flux_array.shape[1]
+
+        logger.info(f"Creating 1D spectra image for {n_fibers} fibers")
+        logger.info(f"Flux array shape: {flux_array.shape}")
+        logger.info(f"Flux range (raw): [{flux_array.min():.2f}, {flux_array.max():.2f}]")
+
+        # Get wavelength range from the middle fiber (similar to showAllSpectraAsImage)
+        ibar = n_fibers // 2
+        lam0, lam1 = wavelength_array[ibar][0], wavelength_array[ibar][-1]
+
+        logger.info(f"Wavelength range: {lam0:.2f} - {lam1:.2f} nm")
+
+        # Check if fiberId is continuous
+        fid_min = fiber_id_array.min()
+        fid_max = fiber_id_array.max()
+        n_expected = fid_max - fid_min + 1
+        is_continuous = (n_fibers == n_expected)
+        logger.info(f"FiberId range: {fid_min} - {fid_max} (n={n_fibers}, expected={n_expected}, continuous={is_continuous})")
+
+        # Sample some fiberIds to check for gaps
+        if n_fibers >= 10:
+            logger.info(f"Sample fiberIds: {fiber_id_array[:5].tolist()} ... {fiber_id_array[-5:].tolist()}")
+
+        # Calculate pixel size for proper centering
+        # Wavelength: assuming uniform spacing
+        wavelength_step = (lam1 - lam0) / (n_wavelength - 1) if n_wavelength > 1 else 1.0
+        # FiberId: spacing is 1 (consecutive integers)
+        fid_step = 1.0
+
+        logger.info(f"Creating full resolution image: {n_fibers} fibers × {n_wavelength} wavelengths = {n_fibers * n_wavelength} pixels")
+        logger.info(f"Pixel sizes: wavelength_step={wavelength_step:.3f} nm, fiberId_step={fid_step}")
+
+        # Apply scaling transformation - exactly like existing 2D code
+        flux_array_float = flux_array.astype(np.float64)
+
+        if scale_algo == "zscale":
+            transform = LuptonAsinhStretch(Q=1) + ZScaleInterval()
+        else:
+            transform = AsinhStretch(a=1) + MinMaxInterval()
+
+        transformed_array = transform(flux_array_float)
+
+        logger.info(
+            f"Transformed array range: [{transformed_array.min():.4f}, {transformed_array.max():.4f}]"
+        )
+
+        # Flip array vertically - exactly like existing 2D code
+        flipped_array = np.flipud(transformed_array)
+
+        # Create fiberId lookup array for hover tool
+        # Create a 2D array where each row contains the fiberId for that row
+        # This allows hover to show fiberId
+        flipped_fiber_ids = np.flipud(fiber_id_array)  # Match the flipped flux array
+
+        # Tile fiberId array to match wavelength dimension
+        fiber_id_2d = np.tile(flipped_fiber_ids[:, np.newaxis], (1, n_wavelength))
+
+        # Stack flipped_array and fiber_id_2d along a new axis for multiple vdims
+        # HoloViews Image can have multiple value dimensions
+        combined_data = np.stack([flipped_array, fiber_id_2d], axis=-1)
+
+        # Create HoloViews Image with wavelength and fiber index coordinates
+        # bounds = (left, bottom, right, top) in data coordinates
+        # NOTE: fiberIds are not continuous (has gaps), so Y-axis uses fiber INDEX (0 to n-1)
+        # Similar to showAllSpectraAsImage: extent=(lam0, lam1, -0.5, n-1+0.5)
+        # X-axis: wavelength (lam0 to lam1) with half-pixel extension for accuracy
+        # Y-axis: fiber index (0 to n-1) with half-pixel extension
+        img = hv.Image(
+            combined_data,
+            bounds=(
+                lam0 - wavelength_step / 2,
+                -0.5,  # Fiber index starts at 0
+                lam1 + wavelength_step / 2,
+                n_fibers - 0.5,  # Fiber index ends at n-1
+            ),
+            kdims=["wavelength", "fiber_index"],
+            vdims=["intensity", "fiberId"],  # Two value dimensions
+        )
+
+        # Calculate plot dimensions
+        plot_width = 1000  # Reduced from 1400 for better layout
+        plot_height = max(200, min(500, int(n_fibers * 0.25)))
+
+        logger.info(f"Created image: {n_fibers} fibers × {n_wavelength} wavelengths, plot size {plot_width}x{plot_height}")
+
+        # Get vmin/vmax for color scaling
+        vmin = transformed_array.min()
+        vmax = transformed_array.max()
+
+        # Create hover tool with wavelength, fiber index, and fiberId
+        hover = HoverTool(
+            tooltips=[
+                ("Wavelength", "$x{0.1f} nm"),
+                ("Fiber Index", "$y{int}"),  # 0-based fiber index
+                ("Fiber ID", "@fiberId{int}"),  # Actual fiberId from lookup array (integer)
+                ("Intensity", "@intensity{0.2f}"),  # Use @intensity instead of @image
+            ]
+        )
+
+        # Apply options
+        # NOTE: data_aspect=1.0 causes rendering issues with large non-square arrays
+        # For 2D detector images (4k×4k square), data_aspect=1.0 works fine
+        # For 1D spectra image (2394×11501 landscape), it prevents rendering
+        img.opts(
+            cmap="cividis",
+            clim=(vmin, vmax),
+            colorbar=True,
+            tools=[
+                hover,
+                "box_zoom",
+                "wheel_zoom",
+                "pan",
+                "undo",
+                "redo",
+                "reset",
+                "save",
+            ],
+            active_tools=["box_zoom"],
+            default_tools=[],
+            frame_width=plot_width,
+            frame_height=plot_height,
+            # data_aspect removed - causes white screen with large landscape arrays
+            xlabel="Wavelength (nm)",
+            ylabel="Fiber Index",  # 0-based index, not fiberId (has gaps)
+            title=f"1D Spectra as Image - Visit {visit} ({n_fibers} fibers, fiberIds {fid_min}-{fid_max})",
+            toolbar="above",
+            axiswise=True,  # Disable axis linking
+            framewise=True,  # Each frame is independent
+        )
+
+        logger.info("1D spectra image created successfully")
+        return img
+
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Failed to create 1D spectra image: {error_msg}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+
+        # Create simple error placeholder
+        dummy = np.ones((100, 100))
+        img = hv.Image(dummy, bounds=(0, 0, 100, 100))
+        img.opts(
+            title=f"Error: {error_msg}",
+            frame_width=800,
+            frame_height=400,
+        )
+        return img
