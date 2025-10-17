@@ -11,6 +11,8 @@ import copy
 import os
 from datetime import datetime, timezone
 
+import matplotlib
+matplotlib.use('Agg')  # Non-interactive backend for parallel processing
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy.visualization import (
@@ -22,6 +24,7 @@ from astropy.visualization import (
 from bokeh.models import HoverTool, Legend
 from bokeh.plotting import figure as bokeh_figure
 from dotenv import load_dotenv
+from joblib import Parallel, delayed
 from loguru import logger
 from matplotlib.figure import Figure
 
@@ -207,6 +210,9 @@ def build_2d_figure(
 ) -> Figure:
     """
     Return a Matplotlib Figure of 2D image for the specified visit.
+
+    Note: This function now expects single spectrograph (int) and single arm (str).
+    For multiple arms/spectrographs, use build_2d_figure_multi_arm.
     """
     # return None
 
@@ -215,13 +221,11 @@ def build_2d_figure(
             "afwDisplay is not available. Check LSST/PFS environment setup."
         )
 
-    if type(spectrograph) is list:
-        spectrograph = spectrograph[0]  # MultiSelect -> int
-        logger.warning("Only the first spectrograph is supported now.")
-
-    if len(arm) > 1:
-        arm = "r"
-        logger.warning(f"Only the {arm} arm is supported now.")
+    # Ensure single spectrograph and arm
+    if isinstance(spectrograph, list):
+        raise ValueError("spectrograph must be a single integer, not a list")
+    if not isinstance(arm, str) or len(arm) != 1:
+        raise ValueError("arm must be a single character string ('b', 'r', 'n', or 'm')")
 
     b = get_butler(datastore, base_collection, visit)
     data_id = make_data_id(visit, spectrograph, arm)
@@ -314,6 +318,160 @@ def build_2d_figure(
 
     logger.info("2D image built.")
     return fig
+
+
+def _build_single_2d_subplot(
+    datastore: str,
+    base_collection: str,
+    visit: int,
+    spectrograph: int,
+    arm: str,
+    subtract_sky: bool = True,
+    overlay: bool = False,
+    fiber_ids=None,
+    scale_algo: str = "zscale",
+):
+    """
+    Build 2D image data for a single arm/spectrograph combination.
+    This is a helper function for parallel processing.
+
+    Returns
+    -------
+    tuple
+        (arm, fig, error_msg) where error_msg is None on success
+    """
+    ARM_NAMES = {
+        'b': 'Blue',
+        'r': 'Red',
+        'n': 'NIR',
+        'm': 'Medium-Red'
+    }
+
+    try:
+        if afwDisplay is None:
+            raise RuntimeError(
+                "afwDisplay is not available. Check LSST/PFS environment setup."
+            )
+
+        b = get_butler(datastore, base_collection, visit)
+        data_id = make_data_id(visit, spectrograph, arm)
+
+        # data retrieval
+        pfs_config = b.get("pfsConfig", data_id)
+        exp = b.get("calexp", data_id)
+        det_map = b.get("detectorMap", data_id)
+
+        pfs_arm = b.get("pfsArm", data_id)
+        # Sky subtraction
+        if subtract_sky:
+            sky1d = b.get("sky1d", data_id)
+            subtractSky1d(pfs_arm, pfs_config, sky1d)
+            _flux = pfs_arm.flux
+            pfs_arm.flux = pfs_arm.sky
+
+        spectra = SpectrumSet.fromPfsArm(pfs_arm)
+        profiles = b.get("fiberProfiles", data_id)
+        traces = profiles.makeFiberTracesFromDetectorMap(det_map)
+        image = spectra.makeImage(exp.getDimensions(), traces)
+
+        del spectra
+
+        if subtract_sky:
+            pfs_arm.flux = _flux
+            del _flux
+        exp.image -= image
+
+        # Create individual figure
+        title = f"{ARM_NAMES.get(arm, arm)} ({arm}{spectrograph})"
+
+        fig = plt.figure(figsize=(10, 10))
+        afwDisplay.setDefaultBackend("matplotlib")
+        disp = afwDisplay.Display(fig, reopenPlot=False)
+
+        # 1. numpy array
+        image_array = exp.image.array.astype(np.float64)
+
+        # 2. astropy transform
+        if scale_algo == "zscale":
+            transform = LuptonAsinhStretch(Q=1) + ZScaleInterval()
+        else:
+            transform = AsinhStretch(a=1) + MinMaxInterval()
+
+        transformed_array = transform(image_array)
+
+        # 3. new Image object
+        exp_disp = copy.deepcopy(exp)
+        new_image = afwImage.ImageF(transformed_array.astype(np.float32))
+        exp_disp.setImage(new_image)
+
+        logger.info(f"Arm {arm}, SM{spectrograph}: Transformed array range: [{transformed_array.min()}, {transformed_array.max()}]")
+
+        disp.scale("linear", "minmax")
+        disp.mtv(exp_disp, title=title)
+
+        # add cursor
+        addPfsCursor(disp, det_map)
+
+        return (arm, fig, None)
+
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Failed to build 2D image for arm {arm}, SM{spectrograph}: {error_msg}")
+        return (arm, None, error_msg)
+
+
+def build_2d_figure_multi_arm(
+    datastore: str,
+    base_collection: str,
+    visit: int,
+    spectrograph: int,
+    arms: list,
+    subtract_sky: bool = True,
+    overlay: bool = False,
+    fiber_ids=None,
+    scale_algo: str = "zscale",
+    n_jobs: int = -1,
+):
+    """
+    Build figures with multiple arms (b, r, n, m) for a single spectrograph.
+    Uses parallel processing via joblib to speed up computation.
+
+    Parameters
+    ----------
+    arms : list of str
+        List of arms to display, e.g., ['b', 'r', 'n'] or ['b', 'm', 'n']
+    n_jobs : int, optional
+        Number of parallel jobs. -1 means use all available CPUs (default: -1)
+
+    Returns
+    -------
+    list of tuples
+        List of (arm, Figure, error_msg) tuples, one per arm
+    """
+    ARM_NAMES = {
+        'b': 'Blue',
+        'r': 'Red',
+        'n': 'NIR',
+        'm': 'Medium-Red'
+    }
+
+    n_arms = len(arms)
+    if n_arms == 0:
+        raise ValueError("At least one arm must be specified")
+
+    logger.info(f"Building 2D images for SM{spectrograph} with {n_arms} arm(s) using parallel processing (n_jobs={n_jobs})")
+
+    # Parallel processing: build each arm's figure independently
+    results = Parallel(n_jobs=n_jobs, verbose=10)(
+        delayed(_build_single_2d_subplot)(
+            datastore, base_collection, visit, spectrograph, arm,
+            subtract_sky, overlay, fiber_ids, scale_algo
+        )
+        for arm in arms
+    )
+
+    logger.info(f"Multi-arm 2D images built for spectrograph {spectrograph} with arms {arms}")
+    return results
 
 
 # --- 1D spectra builder (single visit) ---

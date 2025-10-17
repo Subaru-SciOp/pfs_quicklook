@@ -9,6 +9,7 @@ PFS QuickLook Panel App (2D/1Dのみ)
 
 import numpy as np
 import panel as pn
+from joblib import Parallel, delayed
 from loguru import logger
 
 from quicklook_core import (
@@ -17,6 +18,7 @@ from quicklook_core import (
     OBSDATE_UTC,
     build_1d_bokeh_figure_single_visit,
     build_2d_figure,
+    build_2d_figure_multi_arm,
     discover_visits,
     get_current_obsdate,
     load_visit_data,
@@ -65,7 +67,7 @@ arm_rbg = pn.widgets.RadioButtonGroup(
 spectro_cbg = pn.widgets.CheckButtonGroup(
     name="Spectrograph",
     options=[1, 2, 3, 4],
-    value=[1],
+    value=[1, 2, 3, 4],
     button_type="light",
 )
 
@@ -103,7 +105,8 @@ btn_reset = pn.widgets.Button(name="Reset")
 status_text = pn.pane.Markdown("**Ready**", sizing_mode="stretch_width", height=60)
 
 # --- Output panes ---
-pane_2d = pn.pane.Matplotlib(height=700, sizing_mode="scale_width")
+# pane_2d can hold either a Matplotlib pane or a Tabs object (for multiple spectrographs)
+pane_2d = pn.Column(sizing_mode="scale_width")
 pane_1d = pn.pane.Bokeh(height=550, sizing_mode="scale_width")
 log_md = pn.pane.Markdown("**Ready.**")
 
@@ -223,23 +226,18 @@ def on_fiber_change(event):
 
 
 def plot_2d_callback(event=None):
-    """Create 2D plot"""
+    """Create 2D plot with support for multiple arms and spectrographs"""
     if not pn.state.cache["visit_data"]["loaded"]:
         pn.state.notifications.warning("Load data first.")
         return
 
-    if len(arm_rbg.value) > 1:
-        pn.state.notifications.warning(
-            f"{arm_rbg.value} selected, only r arm will be used for now."
-        )
-    if type(spectro_cbg.value) is list and len(spectro_cbg.value) > 1:
-        pn.state.notifications.warning(
-            f"{spectro_cbg.value} selected, only the first spectrograph will be used for now."
-        )
-
     visit = pn.state.cache["visit_data"]["visit"]
-    spectro = spectro_cbg.value
-    arm = arm_rbg.value
+    spectros = (
+        spectro_cbg.value
+        if isinstance(spectro_cbg.value, list)
+        else [spectro_cbg.value]
+    )
+    arms = list(arm_rbg.value)
     fibers = list(fibers_mc.value) if fibers_mc.value else None
 
     subtract_sky = subtract_sky_chk.value
@@ -250,32 +248,174 @@ def plot_2d_callback(event=None):
         pn.state.notifications.warning("DetectorMap overlay is not supported yet.")
 
     try:
-        status_text.object = "**Creating 2D plot...**"
-        fig2d = build_2d_figure(
-            datastore=DATASTORE,
-            base_collection=BASE_COLLECTION,
-            visit=visit,
-            spectrograph=spectro,
-            arm=arm,
-            subtract_sky=subtract_sky,
-            overlay=overlay,
-            fiber_ids=fibers if overlay else None,
-            scale_algo=scale_algo,
+        n_total = len(spectros) * len(arms)
+        status_text.object = f"**Creating {n_total} 2D plot(s) in parallel...**"
+        logger.info(
+            f"Building 2D plots: {len(spectros)} spectrographs × {len(arms)} arms = {n_total} total images"
         )
-        pane_2d.object = fig2d
+
+        # Parallel processing across spectrographs
+        # Each spectrograph processes its arms in parallel internally
+        def build_for_spectrograph(spectro):
+            """Build figures for a single spectrograph (processes arms in parallel)"""
+            try:
+                logger.info(f"Building 2D figures for SM{spectro} with arms {arms}")
+                arm_results = build_2d_figure_multi_arm(
+                    datastore=DATASTORE,
+                    base_collection=BASE_COLLECTION,
+                    visit=visit,
+                    spectrograph=spectro,
+                    arms=arms,
+                    subtract_sky=subtract_sky,
+                    overlay=overlay,
+                    fiber_ids=fibers if overlay else None,
+                    scale_algo=scale_algo,
+                    n_jobs=-1,  # Use all available CPUs for arms within each spectrograph
+                )
+                return (spectro, arm_results, None)
+            except Exception as e:
+                logger.error(f"Failed to build 2D images for SM{spectro}: {e}")
+                return (spectro, None, str(e))
+
+        # Process all spectrographs in parallel (each with parallel arm processing)
+        results = Parallel(n_jobs=len(spectros), verbose=10)(
+            delayed(build_for_spectrograph)(spectro) for spectro in spectros
+        )
+
+        # Collect successful results and create Panel layouts
+        spectrograph_panels = {}
+        ARM_NAMES = {"b": "Blue", "r": "Red", "n": "NIR", "m": "Medium-Red"}
+
+        for spectro, arm_results, error in results:
+            logger.info(
+                f"Processing SM{spectro}: arm_results type={type(arm_results)}, error={error}"
+            )
+
+            if arm_results is not None and error is None:
+                # Verify arm_results is a list
+                if not isinstance(arm_results, list):
+                    logger.error(
+                        f"SM{spectro}: arm_results is not a list, got {type(arm_results)}: {arm_results}"
+                    )
+                    pn.state.notifications.error(f"Invalid result type for SM{spectro}")
+                    continue
+
+                # Create a Row layout with all arm figures
+                arm_panes = []
+                try:
+                    for arm, fig, arm_error in arm_results:
+                        if fig is not None and arm_error is None:
+                            arm_panes.append(
+                                pn.pane.Matplotlib(
+                                    fig,
+                                    tight=True,
+                                    dpi=100,
+                                    sizing_mode="stretch_width",
+                                )
+                            )
+                        else:
+                            # Create error placeholder
+                            arm_name = ARM_NAMES.get(arm, arm)
+
+                            # Check if it's a "not found" error (data doesn't exist)
+                            is_not_found = arm_error and "could not be found" in arm_error
+
+                            if is_not_found:
+                                # More concise message for missing data
+                                error_text = f"""
+### {arm_name} ({arm}{spectro})
+
+**Data Not Available**
+
+This arm/spectrograph combination does not have data for this visit.
+
+_Error: Dataset not found in collection_
+"""
+                                logger.info(f"SM{spectro} {arm_name}: Data not available (expected for some configurations)")
+                            else:
+                                # Full error for other types of errors
+                                error_text = f"""
+### {arm_name} ({arm}{spectro})
+
+**Error Loading Data**
+
+```
+{arm_error}
+```
+"""
+                                logger.warning(f"SM{spectro} {arm_name}: {arm_error}")
+
+                            arm_panes.append(
+                                pn.pane.Markdown(
+                                    error_text,
+                                    sizing_mode="stretch_width",
+                                    styles={'background': '#f0f0f0', 'padding': '20px', 'border': '1px solid #ddd'}
+                                )
+                            )
+                except Exception as e:
+                    logger.error(f"Error iterating arm_results for SM{spectro}: {e}")
+                    pn.state.notifications.error(
+                        f"Error processing arms for SM{spectro}: {e}"
+                    )
+                    continue
+
+                if arm_panes:
+                    # Arrange arms horizontally
+                    spectrograph_panels[spectro] = pn.Row(
+                        *arm_panes, sizing_mode="stretch_width"
+                    )
+                else:
+                    logger.warning(f"SM{spectro}: No valid arm panes created")
+            else:
+                # Only show error notification if it's not a "data not found" error
+                if error and "could not be found" not in error:
+                    pn.state.notifications.error(
+                        f"Failed to create plots for SM{spectro}: {error}"
+                    )
+                else:
+                    logger.info(f"SM{spectro}: Skipped due to missing data")
+
+        if not spectrograph_panels:
+            # Check if all failures were due to missing data
+            all_missing_data = all(
+                error and "could not be found" in error
+                for _, _, error in results
+                if error is not None
+            )
+
+            if all_missing_data:
+                raise RuntimeError(
+                    "No data available for the selected arm/spectrograph combinations. "
+                    "This visit may not have data for these configurations."
+                )
+            else:
+                raise RuntimeError("No 2D plots were successfully created due to errors")
+
+        # Create tabbed layout for multiple spectrographs
+        tab_items = []
+        for spectro in sorted(spectrograph_panels.keys()):
+            tab_items.append((f"SM{spectro}", spectrograph_panels[spectro]))
+
+        # Clear existing content and add new tabs
+        pane_2d.clear()
+        pane_2d.append(pn.Tabs(*tab_items))
+
         tabs.active = 0  # Switch to 2D tab
         status_text.object = f"**2D plot created for visit {visit}**"
-        pn.state.notifications.success("2D plot created")
+        pn.state.notifications.success(
+            f"2D plot created for {len(spectrograph_panels)} spectrograph(s)"
+        )
 
         fiber_info = f"{len(fibers)} selected" if fibers else "none"
         log_md.object = f"""**2D plot created**
 - visit: {visit}
-- arm/spectrograph: {arm}/{spectro}
+- arms: {', '.join(arms)}
+- spectrographs: {', '.join([f'SM{s}' for s in sorted(spectros)])}
 - fibers: {fiber_info}
 - subtract_sky: {subtract_sky}, overlay: {overlay}, scale: {scale_algo}
 """
     except Exception as e:
-        pane_2d.object = None
+        pane_2d.clear()
         pn.state.notifications.error(f"Failed to show 2D image: {e}")
         logger.error(f"Failed to show 2D image: {e}")
         status_text.object = "**Error creating 2D plot**"
@@ -321,7 +461,7 @@ def plot_1d_callback(event=None):
 
 def reset_app(event=None):
     """Reset application state"""
-    pane_2d.object = None
+    pane_2d.clear()
     pane_1d.object = None
     log_md.object = "**Reset.**"
     status_text.object = "**Ready**"
