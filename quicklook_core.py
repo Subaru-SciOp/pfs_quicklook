@@ -7,8 +7,8 @@ PFS QuickLook core (2D/1D only, no stacking)
 - 1D spectrum for selected fibers (single-visit)
 """
 
-import copy
 import os
+import sys
 from datetime import datetime, timezone
 
 import holoviews as hv
@@ -22,28 +22,27 @@ from astropy.visualization import (
 from bokeh.models import HoverTool, Legend
 from bokeh.plotting import figure as bokeh_figure
 from dotenv import load_dotenv
-from holoviews.operation.datashader import rasterize
 from joblib import Parallel, delayed
 from loguru import logger
+
+# Configure logger with INFO level
+logger.remove()  # Remove default handler
+logger.add(sys.stdout, level="INFO")
 
 # Enable Bokeh backend for HoloViews
 hv.extension("bokeh")
 
 # --- LSST/PFS imports ---
 try:
-    import lsst.afw.image as afwImage
     from lsst.daf.butler import Butler
-    from pfs.datamodel import TargetType
     from pfs.drp.stella import SpectrumSet
     from pfs.drp.stella.subtractSky1d import subtractSky1d
 
     logger.info("LSST/PFS imports succeeded.")
 except Exception as _import_err:
-    afwImage = None
     Butler = None
     SpectrumSet = None
     subtractSky1d = None
-    TargetType = None
     logger.error("Warning: LSST/PFS imports failed:", _import_err)
     raise _import_err
 
@@ -142,9 +141,43 @@ def discover_visits(
         # Extract visit numbers and convert to integers
         visits = [int(coll.split("/")[-1]) for coll in collections]
 
+        # If obsdate_utc is not specified or empty, return all visits
+        if not obsdate_utc:
+            visit_list = sorted(visits)
+            logger.info(f"Found {len(visit_list)} visits under {base_collection} (no date filter)")
+            return visit_list
+
+        # Filter by observation date if specified using parallel processing
+        def check_visit_date(visit):
+            """Check if visit matches the observation date"""
+            try:
+                b = get_butler(datastore, base_collection, visit)
+                obstime = b.get(
+                    "pfsConfig", visit=visit, spectrograph=1, arm="b"
+                ).obstime
+                logger.debug(f"Visit {visit} observation date: {obstime}")
+                if obstime.startswith(obsdate_utc):
+                    logger.debug(f"Visit {visit} date {obstime} matches {obsdate_utc}")
+                    return visit
+                return None
+            except Exception as e:
+                logger.warning(f"Failed to check visit {visit}: {e}")
+                return None
+
+        # Parallel processing with max 16 cores
+        logger.info(f"Filtering visits by observation date: {obsdate_utc}")
+        results = Parallel(n_jobs=min(16, len(visits)), verbose=1)(
+            delayed(check_visit_date)(visit) for visit in visits
+        )
+
+        # Filter out None values
+        visits_use = [v for v in results if v is not None]
+
         # Sort and return as list
-        visit_list = sorted(visits)
-        logger.info(f"Found {len(visit_list)} visits under {base_collection}")
+        visit_list = sorted(visits_use)
+        logger.info(
+            f"Found {len(visit_list)} visits out of {len(visits)} visits under {base_collection} (filtered by {obsdate_utc})"
+        )
 
         return visit_list
 
@@ -194,8 +227,6 @@ def load_visit_data(datastore: str, base_collection: str, visit: int):
 
 
 # --- 2D image builder ---
-# Old matplotlib-based build_2d_figure() function removed
-# Now using HoloViews-based _build_single_2d_holoviews() and build_2d_figure_multi_arm()
 
 
 def _build_single_2d_array(
@@ -425,20 +456,29 @@ def create_holoviews_from_arrays(array_results, spectrograph):
                 # For portrait images (height > width), fix height and adjust width
                 if aspect_ratio >= 1.0:
                     # Landscape or square: fix width
-                    plot_width = 800
-                    plot_height = int(800 / aspect_ratio)
+                    plot_width = 512
+                    plot_height = int(512 / aspect_ratio)
                 else:
                     # Portrait: fix height
-                    plot_height = 800
-                    plot_width = int(800 * aspect_ratio)
+                    plot_height = 512
+                    plot_width = int(512 * aspect_ratio)
 
                 logger.info(f"Plot dimensions for {arm}: {plot_width}x{plot_height}")
 
                 img.opts(
-                    cmap="gray",
+                    cmap="cividis",
                     clim=(vmin, vmax),  # Linear scaling of full range
                     colorbar=True,
-                    tools=[hover, "box_zoom", "wheel_zoom", "pan", "reset", "save"],
+                    tools=[
+                        hover,
+                        "box_zoom",
+                        "wheel_zoom",
+                        "pan",
+                        "undo",
+                        "redo",
+                        "reset",
+                        "save",
+                    ],
                     active_tools=["box_zoom"],
                     default_tools=[],  # Disable default tools to prevent duplicate tooltips
                     frame_width=plot_width,
@@ -515,11 +555,6 @@ def build_2d_figure_multi_arm(
     hv_results = create_holoviews_from_arrays(array_results, spectrograph)
 
     return hv_results
-
-
-# --- 1D spectra builder (single visit) ---
-# Old matplotlib-based build_1d_figure_single_visit() function removed
-# Now using Bokeh-based build_1d_bokeh_figure_single_visit()
 
 
 # --- 1D spectra builder using Bokeh (single visit) ---
@@ -669,7 +704,7 @@ def build_1d_bokeh_figure_single_visit(
 
     except Exception as e:
         # Create error figure
-        p = bokeh_figure(width=800, height=300, title="Error")
+        p = bokeh_figure(width=512, height=300, title="Error")
         p.text(
             x=[0.5],
             y=[0.5],

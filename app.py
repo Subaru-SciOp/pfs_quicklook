@@ -7,6 +7,8 @@ PFS QuickLook Panel App (2D/1D)
 - Run/Reset/Export(PNG)
 """
 
+import sys
+
 import numpy as np
 import panel as pn
 from joblib import Parallel, delayed
@@ -25,10 +27,12 @@ from quicklook_core import (
     reload_config,
 )
 
-pn.extension(
-    # "ipywidgets",
-    notifications=True,
-)
+pn.extension(notifications=True)
+
+
+# Configure logger with INFO level
+logger.remove()  # Remove default handler
+logger.add(sys.stdout, level="INFO")
 
 
 # --- Session initialization ---
@@ -106,7 +110,8 @@ status_text = pn.pane.Markdown("**Ready**", sizing_mode="stretch_width", height=
 # --- Output panes ---
 # pane_2d can hold either a Matplotlib pane or a Tabs object (for multiple spectrographs)
 pane_2d = pn.Column(sizing_mode="scale_width")
-pane_1d = pn.pane.Bokeh(height=550, sizing_mode="scale_width")
+# pane_1d holds Bokeh figures
+pane_1d = pn.Column(height=550, sizing_mode="scale_width")
 log_md = pn.pane.Markdown("**Ready.**")
 
 tabs = pn.Tabs(("2D", pane_2d), ("1D", pane_1d), ("Log", log_md))
@@ -433,7 +438,7 @@ _Error: Dataset not found in collection_
 
 
 def plot_1d_callback(event=None):
-    """Create 1D plot"""
+    """Create 1D plot using Bokeh"""
     if not pn.state.cache["visit_data"]["loaded"]:
         pn.state.notifications.warning("Load data first.")
         return
@@ -448,13 +453,19 @@ def plot_1d_callback(event=None):
 
     try:
         status_text.object = "**Creating 1D plot...**"
+
+        # Clear existing content
+        pane_1d.clear()
+
+        # Use Bokeh for rendering
         p_fig1d = build_1d_bokeh_figure_single_visit(
             datastore=DATASTORE,
             base_collection=BASE_COLLECTION,
             visit=visit,
             fiber_ids=fibers,
         )
-        pane_1d.object = p_fig1d
+        pane_1d.append(pn.pane.Bokeh(p_fig1d, sizing_mode="scale_width"))
+
         tabs.active = 1  # Switch to 1D tab
         status_text.object = f"**1D plot created for visit {visit}**"
         pn.state.notifications.success("1D plot created")
@@ -464,7 +475,7 @@ def plot_1d_callback(event=None):
 - fibers: {len(fibers)} selected ({fibers[:10]}{'...' if len(fibers) > 10 else ''})
 """
     except Exception as e:
-        pane_1d.object = None
+        pane_1d.clear()
         pn.state.notifications.error(f"Failed to show 1D spectra: {e}")
         logger.error(f"Failed to show 1D spectra: {e}")
         status_text.object = "**Error creating 1D plot**"
@@ -473,7 +484,7 @@ def plot_1d_callback(event=None):
 def reset_app(event=None):
     """Reset application state"""
     pane_2d.clear()
-    pane_1d.object = None
+    pane_1d.clear()  # Clear Column instead of setting object to None
     log_md.object = "**Reset.**"
     status_text.object = "**Ready**"
 
@@ -528,13 +539,6 @@ sidebar = pn.Column(
     obcode_mc,
     # "### Fiber ID",
     fibers_mc,
-    #
-    # pn.layout.Divider(),  # hline
-    # #
-    # "## Options",
-    # subtract_sky_chk,
-    # overlay_chk,
-    # scale_sel,
     #
     pn.layout.Divider(),  # hline
     #
