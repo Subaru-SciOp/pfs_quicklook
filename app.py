@@ -8,6 +8,7 @@ PFS QuickLook Panel App (2D/1D)
 """
 
 import sys
+import threading
 
 import numpy as np
 import panel as pn
@@ -18,6 +19,7 @@ from quicklook_core import (
     BASE_COLLECTION,
     DATASTORE,
     OBSDATE_UTC,
+    VISIT_REFRESH_INTERVAL,
     build_1d_bokeh_figure_single_visit,
     build_2d_arrays_multi_arm,
     create_holoviews_from_arrays,
@@ -35,32 +37,6 @@ logger.remove()  # Remove default handler
 logger.add(sys.stdout, level="INFO")
 
 
-# --- Session initialization ---
-def on_session_created():
-    """Called when a new browser session starts (page load/reload)"""
-    datastore, base_collection, obsdate_utc = reload_config()
-    logger.info(
-        f"Session started with DATASTORE={datastore}, BASE_COLLECTION={base_collection}, OBSDATE_UTC={obsdate_utc}"
-    )
-    pn.state.notifications.info("Configuration loaded from .env file")
-
-    # Initialize session cache
-    if "visit_data" not in pn.state.cache:
-        pn.state.cache["visit_data"] = {
-            "loaded": False,
-            "visit": None,
-            "pfsConfig": None,
-            "obcode_to_fibers": {},
-            "fiber_to_obcode": {},
-        }
-    if "programmatic_update" not in pn.state.cache:
-        pn.state.cache["programmatic_update"] = False
-
-
-# Register the callback to run on each session start
-pn.state.onload(on_session_created)
-
-
 # --- Widgets ---
 # Arm selection widget removed - always attempt to load all 4 arms (b, r, n, m)
 # Display order will be brn or bmn depending on which arms have data
@@ -68,7 +44,8 @@ spectro_cbg = pn.widgets.CheckButtonGroup(
     name="Spectrograph",
     options=[1, 2, 3, 4],
     value=[1, 2, 3, 4],
-    button_type="primary",
+    # button_type="primary",
+    button_type="default",
     button_style="outline",
     sizing_mode="stretch_width",
 )
@@ -77,6 +54,7 @@ visit_mc = pn.widgets.MultiChoice(
     name="Visit",
     options=[],
     max_items=1,  # temporary limit to single visit mode
+    placeholder="Loading visits...",  # Initial state shows loading
 )
 
 obcode_mc = pn.widgets.MultiChoice(
@@ -530,6 +508,176 @@ def reset_app(event=None):
     fibers_mc.value = []
 
 
+# --- Asynchronous visit discovery ---
+def get_visit_discovery_state():
+    """Get or create visit discovery state for current session"""
+    if "visit_discovery" not in pn.state.cache:
+        pn.state.cache["visit_discovery"] = {
+            "status": None,
+            "result": None,
+            "error": None,
+        }
+    return pn.state.cache["visit_discovery"]
+
+
+def discover_visits_worker(state_dict):
+    """Worker function that runs in background thread
+
+    Args:
+        state_dict: Dictionary reference to store results (passed from main thread)
+    """
+    try:
+        logger.info(
+            f"Starting visit discovery for date: {OBSDATE_UTC or get_current_obsdate()}"
+        )
+        state_dict["status"] = "running"
+
+        # Discover visits (this is the slow part)
+        discovered_visits = discover_visits(
+            DATASTORE,
+            BASE_COLLECTION,
+            OBSDATE_UTC,
+        )
+
+        # Store results
+        if discovered_visits:
+            state_dict["status"] = "success"
+            state_dict["result"] = discovered_visits
+            logger.info(f"Loaded {len(discovered_visits)} visits")
+        else:
+            state_dict["status"] = "no_data"
+            logger.warning("No visits discovered. Visit list will be empty.")
+
+    except Exception as e:
+        logger.error(f"Error during visit discovery: {e}")
+        state_dict["status"] = "error"
+        state_dict["error"] = str(e)
+
+
+def check_visit_discovery():
+    """Check if background visit discovery is complete and update widget"""
+    state = get_visit_discovery_state()
+    status = state.get("status")
+
+    if status == "success":
+        discovered_visits = state["result"]
+        old_count = len(visit_mc.options) if visit_mc.options else 0
+        new_count = len(discovered_visits) if discovered_visits else 0
+
+        # Update widget
+        visit_mc.options = discovered_visits
+        visit_mc.placeholder = "Select visit..."
+        visit_mc.disabled = False
+
+        # Preserve user's selection if valid
+        if visit_mc.value and discovered_visits:
+            current_selection = list(visit_mc.value)
+            if not all(v in discovered_visits for v in current_selection):
+                visit_mc.value = []
+
+        # Show notification
+        if old_count == 0:
+            pn.state.notifications.success(f"Found {new_count} visits")
+            logger.info(f"Initial visit discovery: {new_count} visits")
+        elif new_count > old_count:
+            pn.state.notifications.success(f"Found {new_count - old_count} new visit(s) (total: {new_count})")
+            logger.info(f"Visit list updated: +{new_count - old_count} visits (total: {new_count})")
+        else:
+            logger.info(f"Visit list refreshed: {new_count} visits (no changes)")
+
+        # Reset and stop
+        state.update({"status": None, "result": None})
+        return False
+
+    elif status == "no_data":
+        visit_mc.options = []
+        visit_mc.value = []
+        visit_mc.placeholder = "No visits found"
+        visit_mc.disabled = False
+        pn.state.notifications.warning("No visits found for the specified date")
+
+        state["status"] = None
+        return False
+
+    elif status == "error":
+        visit_mc.placeholder = "Error loading visits"
+        visit_mc.disabled = False
+        pn.state.notifications.error(f"Failed to discover visits: {state['error']}")
+
+        state.update({"status": None, "error": None})
+        return False
+
+    # Still running
+    return True
+
+
+def trigger_visit_refresh():
+    """Trigger a background visit refresh (called periodically if auto-refresh enabled)"""
+    state = get_visit_discovery_state()
+
+    if state.get("status") != "running":
+        logger.info("Auto-refreshing visit list...")
+        pn.state.notifications.info("Updating visit list...", duration=3000)
+
+        thread = threading.Thread(target=discover_visits_worker, args=(state,), daemon=True)
+        thread.start()
+
+        pn.state.add_periodic_callback(check_visit_discovery, period=500)
+
+
+# --- Session initialization ---
+def on_session_created():
+    """Called when a new browser session starts (page load/reload)"""
+    datastore, base_collection, obsdate_utc, refresh_interval = reload_config()
+    logger.info(
+        f"Session started with DATASTORE={datastore}, BASE_COLLECTION={base_collection}, "
+        f"OBSDATE_UTC={obsdate_utc}, VISIT_REFRESH_INTERVAL={refresh_interval}s"
+    )
+    pn.state.notifications.info("Configuration loaded from .env file")
+
+    # Initialize session cache
+    if "visit_data" not in pn.state.cache:
+        pn.state.cache["visit_data"] = {
+            "loaded": False,
+            "visit": None,
+            "pfsConfig": None,
+            "obcode_to_fibers": {},
+            "fiber_to_obcode": {},
+        }
+    if "programmatic_update" not in pn.state.cache:
+        pn.state.cache["programmatic_update"] = False
+
+    # Reset visit widget to loading state
+    visit_mc.placeholder = "Loading visits..."
+    visit_mc.disabled = True
+    visit_mc.options = []
+    visit_mc.value = []
+
+    # Get session-specific state
+    state = get_visit_discovery_state()
+
+    # Start initial visit discovery in background thread
+    logger.info("Starting initial visit discovery for this session...")
+    thread = threading.Thread(target=discover_visits_worker, args=(state,), daemon=True)
+    thread.start()
+
+    # Start periodic callback to check for results (every 500ms)
+    # The callback will automatically stop when it returns False
+    pn.state.add_periodic_callback(check_visit_discovery, period=500)
+
+    # If auto-refresh is enabled, set up periodic refresh
+    if refresh_interval > 0:
+        refresh_interval_ms = refresh_interval * 1000  # Convert seconds to milliseconds
+        logger.info(
+            f"Auto-refresh enabled: visit list will update every {refresh_interval} seconds"
+        )
+        pn.state.add_periodic_callback(trigger_visit_refresh, period=refresh_interval_ms)
+
+
+# Register the callback to run on each session start
+pn.state.onload(on_session_created)
+
+
 # Connect callbacks
 btn_load_data.on_click(load_data_callback)
 btn_plot_2d.on_click(plot_2d_callback)
@@ -585,24 +733,3 @@ pn.template.FastListTemplate(
     # header_background="#0B3D91",
     sidebar_width=320,  # 1920px幅の画面でサイドバー固定
 ).servable()
-
-
-# Discover available visits from Butler
-logger.info(
-    f"Discovering visits for observation date: {OBSDATE_UTC or get_current_obsdate()}"
-)
-discovered_visits = discover_visits(
-    DATASTORE,
-    BASE_COLLECTION,
-    OBSDATE_UTC,
-)
-
-if discovered_visits:
-    visit_mc.options = discovered_visits
-    # visit_mc.value = [discovered_visits[0]]  # Select first visit by default
-    visit_mc.value = []
-    logger.info(f"Loaded {len(discovered_visits)} visits")
-else:
-    logger.warning("No visits discovered. Visit list will be empty.")
-    visit_mc.options = []
-    visit_mc.value = []

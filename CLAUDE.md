@@ -12,7 +12,10 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
 - **Web Framework**: Panel-based web application ([app.py](app.py))
 - **Core Functions**: Modular spectral processing functions ([quicklook_core.py](quicklook_core.py))
 - **Butler Integration**: LSST Data Butler integration for data retrieval
-- **Visit Discovery**: Automatic visit discovery from Butler datastore based on base collection ([quicklook_core.py:103-152](quicklook_core.py#L103-L152))
+- **Asynchronous Visit Discovery**: Non-blocking visit discovery with automatic refresh ([app.py:511-625](app.py#L511-L625))
+  - Initial visit discovery on session start (background thread)
+  - Optional auto-refresh every N seconds (configurable via `.env`)
+  - Date-based filtering with parallel processing ([quicklook_core.py:144-182](quicklook_core.py#L144-L182))
 - **Launch Script**: Bash script to set up environment and launch app ([launch_app.bash](launch_app.bash))
 - **Session Management**: Per-session data caching using `pn.state.cache` for multi-user support
 
@@ -54,9 +57,12 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
 
 **UI Features**:
 - Toast notifications for warnings, errors, and success messages
+  - "Updating visit list..." (3 seconds) during auto-refresh
+  - "Found N visits" or "Found N new visit(s)" on completion
 - Automatic tab switching: switches to 2D/1D tab after plot creation
 - Fixed-height status display (60px) to prevent layout shifts
 - Responsive design with min/max width constraints (280-400px sidebar)
+- Non-blocking UI: visit discovery runs in background, UI remains responsive
 
 #### Workflow & Data Flow
 
@@ -201,12 +207,13 @@ pfs_quicklook/
 
 #### quicklook_core.py
 
-**`discover_visits(datastore, base_collection, obsdate_utc)`** ([quicklook_core.py:103-152](quicklook_core.py#L103-L152)):
+**`discover_visits(datastore, base_collection, obsdate_utc)`** ([quicklook_core.py:103-187](quicklook_core.py#L103-L187)):
 - Discovers available visits from Butler datastore
 - Uses Butler registry to query collections matching `base_collection/??????` pattern (6-digit visit numbers)
-- Parameters: datastore, base_collection, obsdate_utc (optional, for future filtering)
+- **Date filtering**: If `obsdate_utc` is specified, filters visits by observation date using parallel processing (max 16 cores)
+- Parameters: datastore, base_collection, obsdate_utc (optional)
 - Returns: Sorted list of visit numbers (as integers)
-- Called on app startup to populate visit selection widget
+- Called asynchronously on app startup and periodically for auto-refresh
 
 **`load_visit_data(datastore, base_collection, visit)`** ([quicklook_core.py:155-200](quicklook_core.py#L155-L200)):
 - Loads pfsConfig for specified visit
@@ -248,10 +255,35 @@ pfs_quicklook/
 - Creates 1D plot (requires fiber selection)
 - Switches to 1D tab automatically
 
-**`reset_app()`** ([app.py:321-344](app.py#L321-L344)):
+**`reset_app()`** ([app.py:483-507](app.py#L483-L507)):
 - Clears all plots, cache, and selections
 - Disables plot buttons
 - Resets status to "Ready"
+
+#### Asynchronous Visit Discovery
+
+**`get_visit_discovery_state()`** ([app.py:512-520](app.py#L512-L520)):
+- Returns session-specific visit discovery state from `pn.state.cache`
+- State structure: `{"status": None, "result": None, "error": None}`
+- Each user session has independent state
+
+**`discover_visits_worker(state_dict)`** ([app.py:523-555](app.py#L523-L555)):
+- Background thread worker function
+- Calls `discover_visits()` and stores results in `state_dict`
+- Status values: "running", "success", "no_data", "error"
+
+**`check_visit_discovery()`** ([app.py:557-611](app.py#L557-L611)):
+- Periodic callback (every 500ms) to check if background discovery is complete
+- Updates visit widget with results
+- Preserves user's current selection if still valid
+- Shows notifications based on results
+- Returns `False` to stop checking when complete
+
+**`trigger_visit_refresh()`** ([app.py:614-625](app.py#L614-L625)):
+- Triggered periodically if auto-refresh is enabled
+- Shows "Updating visit list..." notification (3 seconds)
+- Starts background thread and periodic callback
+- Only runs if no discovery is already in progress
 
 ### Session State Management
 
@@ -265,7 +297,12 @@ pfs_quicklook/
         'obcode_to_fibers': dict,    # OB Code → [Fiber IDs]
         'fiber_to_obcode': dict,     # Fiber ID → OB Code
     },
-    'programmatic_update': bool      # Circular reference prevention flag
+    'programmatic_update': bool,     # Circular reference prevention flag
+    'visit_discovery': {
+        'status': str,               # "running", "success", "error", "no_data", or None
+        'result': list,              # List of discovered visit numbers
+        'error': str,                # Error message if status is "error"
+    }
 }
 ```
 
@@ -277,15 +314,17 @@ pfs_quicklook/
 
 ### Environment Configuration
 
-**Environment Variables** ([quicklook_core.py:54-56](quicklook_core.py#L54-L56)):
+**Environment Variables** ([quicklook_core.py:53-56](quicklook_core.py#L53-L56)):
 - `PFS_DATASTORE`: Path to Butler datastore (default: `/work/datastore`)
 - `PFS_BASE_COLLECTION`: Base collection name (default: `u/obsproc/s25a/20250520b`)
-- `PFS_OBSDATE_UTC`: Optional observation date for visit filtering
+- `PFS_OBSDATE_UTC`: Observation date for visit filtering (format: "YYYY-MM-DD", optional)
+- `PFS_VISIT_REFRESH_INTERVAL`: Auto-refresh interval in seconds (default: 300, set to 0 to disable)
 
-**Configuration Reload** ([quicklook_core.py:60-69](quicklook_core.py#L60-L69)):
+**Configuration Reload** ([quicklook_core.py:60-71](quicklook_core.py#L60-L71)):
 - `reload_config()` function reloads `.env` file
-- Called on session start
-- Allows runtime configuration changes
+- Called on each session start
+- Returns: `(datastore, base_collection, obsdate_utc, refresh_interval)`
+- Allows runtime configuration changes without restarting the app
 
 **Launch Requirements** ([launch_app.bash](launch_app.bash)):
 1. LSST stack environment (`loadLSST.bash`)

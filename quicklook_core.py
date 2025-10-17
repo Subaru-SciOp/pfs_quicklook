@@ -53,6 +53,7 @@ load_dotenv(verbose=True)
 DATASTORE = os.environ.get("PFS_DATASTORE", "/work/datastore")
 BASE_COLLECTION = os.environ.get("PFS_BASE_COLLECTION", "u/obsproc/s25a/20250520b")
 OBSDATE_UTC = os.environ.get("PFS_OBSDATE_UTC", None)
+VISIT_REFRESH_INTERVAL = int(os.environ.get("PFS_VISIT_REFRESH_INTERVAL", "300"))  # seconds, 0 = disabled
 
 
 # --- Config reload function ---
@@ -62,10 +63,12 @@ def reload_config():
     datastore = os.environ.get("PFS_DATASTORE", "/work/datastore")
     base_collection = os.environ.get("PFS_BASE_COLLECTION", "u/obsproc/s25a/20250520b")
     obsdate_utc = os.environ.get("PFS_OBSDATE_UTC", None)
+    refresh_interval = int(os.environ.get("PFS_VISIT_REFRESH_INTERVAL", "300"))
     logger.info(
-        f"Config reloaded - DATASTORE: {datastore}, BASE_COLLECTION: {base_collection}, OBSDATE_UTC: {obsdate_utc}"
+        f"Config reloaded - DATASTORE: {datastore}, BASE_COLLECTION: {base_collection}, "
+        f"OBSDATE_UTC: {obsdate_utc}, VISIT_REFRESH_INTERVAL: {refresh_interval}s"
     )
-    return datastore, base_collection, obsdate_utc
+    return datastore, base_collection, obsdate_utc, refresh_interval
 
 
 # --- Helpers ---
