@@ -2,4 +2,7 @@ panel
 watchfiles
 loguru
 ipywidgets_bokeh
-ipympl
+holoviews>=1.18.0
+datashader>=0.16.0
+colorcet
+joblib

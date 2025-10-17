@@ -17,8 +17,8 @@ from quicklook_core import (
     DATASTORE,
     OBSDATE_UTC,
     build_1d_bokeh_figure_single_visit,
-    build_2d_figure,
-    build_2d_figure_multi_arm,
+    build_2d_arrays_multi_arm,
+    create_holoviews_from_arrays,
     discover_visits,
     get_current_obsdate,
     load_visit_data,
@@ -26,7 +26,7 @@ from quicklook_core import (
 )
 
 pn.extension(
-    "ipywidgets",
+    # "ipywidgets",
     notifications=True,
 )
 
@@ -248,18 +248,21 @@ def plot_2d_callback(event=None):
 
     try:
         n_total = len(spectros) * len(arms)
-        status_text.object = f"**Creating {n_total} 2D plot(s) in parallel...**"
+        status_text.object = f"**Creating {n_total} 2D plot(s)...**"
         logger.info(
             f"Building 2D plots: {len(spectros)} spectrographs × {len(arms)} arms = {n_total} total images"
         )
 
-        # Parallel processing across spectrographs
-        # Each spectrograph processes its arms in parallel internally
-        def build_for_spectrograph(spectro):
-            """Build figures for a single spectrograph (processes arms in parallel)"""
+        # Process spectrographs in parallel (only array generation)
+        # Two-level parallelization: spectrographs in parallel, arms within each spectrograph in parallel
+        spectrograph_panels = {}
+        ARM_NAMES = {"b": "Blue", "r": "Red", "n": "NIR", "m": "Medium-Red"}
+
+        def build_arrays_for_spectrograph(spectro):
+            """Build arrays for a single spectrograph (pickle-able)"""
+            logger.info(f"Building 2D arrays for SM{spectro} with arms {arms}")
             try:
-                logger.info(f"Building 2D figures for SM{spectro} with arms {arms}")
-                arm_results = build_2d_figure_multi_arm(
+                array_results = build_2d_arrays_multi_arm(
                     datastore=DATASTORE,
                     base_collection=BASE_COLLECTION,
                     visit=visit,
@@ -271,21 +274,33 @@ def plot_2d_callback(event=None):
                     scale_algo=scale_algo,
                     n_jobs=-1,  # Use all available CPUs for arms within each spectrograph
                 )
-                return (spectro, arm_results, None)
+                return (spectro, array_results, None)
             except Exception as e:
-                logger.error(f"Failed to build 2D images for SM{spectro}: {e}")
+                logger.error(f"Failed to build 2D arrays for SM{spectro}: {e}")
                 return (spectro, None, str(e))
 
-        # Process all spectrographs in parallel (each with parallel arm processing)
-        results = Parallel(n_jobs=len(spectros), verbose=10)(
-            delayed(build_for_spectrograph)(spectro) for spectro in spectros
+        # Parallel processing across spectrographs (arrays only, pickle-able)
+        logger.info(f"Building arrays for {len(spectros)} spectrographs in parallel")
+        array_results_all = Parallel(n_jobs=len(spectros), verbose=10)(
+            delayed(build_arrays_for_spectrograph)(spectro) for spectro in spectros
         )
 
-        # Collect successful results and create Panel layouts
-        spectrograph_panels = {}
-        ARM_NAMES = {"b": "Blue", "r": "Red", "n": "NIR", "m": "Medium-Red"}
-
-        for spectro, arm_results, error in results:
+        # Create HoloViews objects in main thread (not pickle-able)
+        logger.info("Arrays built, now creating HoloViews images in main thread")
+        for spectro, array_results, error in array_results_all:
+            if array_results is not None and error is None:
+                # Create HoloViews objects from arrays
+                try:
+                    arm_results = create_holoviews_from_arrays(array_results, spectro)
+                    error = None
+                except Exception as e:
+                    logger.error(
+                        f"Failed to create HoloViews images for SM{spectro}: {e}"
+                    )
+                    arm_results = None
+                    error = str(e)
+            else:
+                arm_results = None
             logger.info(
                 f"Processing SM{spectro}: arm_results type={type(arm_results)}, error={error}"
             )
@@ -299,17 +314,16 @@ def plot_2d_callback(event=None):
                     pn.state.notifications.error(f"Invalid result type for SM{spectro}")
                     continue
 
-                # Create a Row layout with all arm figures
+                # Create a Row layout with all arm HoloViews images
                 arm_panes = []
                 try:
-                    for arm, fig, arm_error in arm_results:
-                        if fig is not None and arm_error is None:
+                    for arm, hv_img, arm_error in arm_results:
+                        if hv_img is not None and arm_error is None:
                             arm_panes.append(
-                                pn.pane.Matplotlib(
-                                    fig,
-                                    tight=True,
-                                    dpi=100,
-                                    sizing_mode="stretch_width",
+                                pn.pane.HoloViews(
+                                    hv_img,
+                                    backend="bokeh",
+                                    # Don't use sizing_mode to preserve aspect ratio set in HoloViews
                                 )
                             )
                         else:
@@ -383,22 +397,10 @@ _Error: Dataset not found in collection_
                     logger.info(f"SM{spectro}: Skipped due to missing data")
 
         if not spectrograph_panels:
-            # Check if all failures were due to missing data
-            all_missing_data = all(
-                error and "could not be found" in error
-                for _, _, error in results
-                if error is not None
+            raise RuntimeError(
+                "No 2D plots were successfully created. "
+                "Check that the selected arm/spectrograph combinations have data available."
             )
-
-            if all_missing_data:
-                raise RuntimeError(
-                    "No data available for the selected arm/spectrograph combinations. "
-                    "This visit may not have data for these configurations."
-                )
-            else:
-                raise RuntimeError(
-                    "No 2D plots were successfully created due to errors"
-                )
 
         # Create tabbed layout for multiple spectrographs
         tab_items = []

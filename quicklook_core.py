@@ -11,9 +11,7 @@ import copy
 import os
 from datetime import datetime, timezone
 
-import matplotlib
-matplotlib.use('Agg')  # Non-interactive backend for parallel processing
-import matplotlib.pyplot as plt
+import holoviews as hv
 import numpy as np
 from astropy.visualization import (
     AsinhStretch,
@@ -24,28 +22,27 @@ from astropy.visualization import (
 from bokeh.models import HoverTool, Legend
 from bokeh.plotting import figure as bokeh_figure
 from dotenv import load_dotenv
+from holoviews.operation.datashader import rasterize
 from joblib import Parallel, delayed
 from loguru import logger
-from matplotlib.figure import Figure
+
+# Enable Bokeh backend for HoloViews
+hv.extension("bokeh")
 
 # --- LSST/PFS imports ---
 try:
-    import lsst.afw.display as afwDisplay
     import lsst.afw.image as afwImage
     from lsst.daf.butler import Butler
     from pfs.datamodel import TargetType
     from pfs.drp.stella import SpectrumSet
     from pfs.drp.stella.subtractSky1d import subtractSky1d
-    from pfs.drp.stella.utils import addPfsCursor, showDetectorMap
 
     logger.info("LSST/PFS imports succeeded.")
 except Exception as _import_err:
-    afwDisplay = None
+    afwImage = None
     Butler = None
     SpectrumSet = None
     subtractSky1d = None
-    addPfsCursor = None
-    showDetectorMap = None
     TargetType = None
     logger.error("Warning: LSST/PFS imports failed:", _import_err)
     raise _import_err
@@ -197,130 +194,11 @@ def load_visit_data(datastore: str, base_collection: str, visit: int):
 
 
 # --- 2D image builder ---
-def build_2d_figure(
-    datastore: str,
-    base_collection: str,
-    visit: int,
-    spectrograph: int,
-    arm: str,
-    subtract_sky: bool = True,
-    overlay: bool = False,
-    fiber_ids=None,
-    scale_algo: str = "zscale",
-) -> Figure:
-    """
-    Return a Matplotlib Figure of 2D image for the specified visit.
-
-    Note: This function now expects single spectrograph (int) and single arm (str).
-    For multiple arms/spectrographs, use build_2d_figure_multi_arm.
-    """
-    # return None
-
-    if afwDisplay is None:
-        raise RuntimeError(
-            "afwDisplay is not available. Check LSST/PFS environment setup."
-        )
-
-    # Ensure single spectrograph and arm
-    if isinstance(spectrograph, list):
-        raise ValueError("spectrograph must be a single integer, not a list")
-    if not isinstance(arm, str) or len(arm) != 1:
-        raise ValueError("arm must be a single character string ('b', 'r', 'n', or 'm')")
-
-    b = get_butler(datastore, base_collection, visit)
-    data_id = make_data_id(visit, spectrograph, arm)
-
-    # data retrieval
-    pfs_config = b.get("pfsConfig", data_id)
-    exp = b.get("calexp", data_id)
-    det_map = b.get("detectorMap", data_id)
-
-    pfs_arm = b.get("pfsArm", data_id)
-    # Sky subtraction
-    if subtract_sky:
-        sky1d = b.get("sky1d", data_id)
-        subtractSky1d(pfs_arm, pfs_config, sky1d)
-        _flux = pfs_arm.flux
-        pfs_arm.flux = pfs_arm.sky
-
-    spectra = SpectrumSet.fromPfsArm(pfs_arm)
-    profiles = b.get("fiberProfiles", data_id)
-    traces = profiles.makeFiberTracesFromDetectorMap(det_map)
-    image = spectra.makeImage(exp.getDimensions(), traces)
-
-    del spectra
-
-    if subtract_sky:
-        pfs_arm.flux = _flux
-        del _flux
-    exp.image -= image
-
-    # Display
-    title = f"calexp {visit} {arm}{spectrograph}"
-
-    fig = plt.figure(figsize=(10, 10))
-    afwDisplay.setDefaultBackend("matplotlib")
-    disp = afwDisplay.Display(fig)
-
-    # 1. numpy 配列として取得
-    image_array = exp.image.array.astype(np.float64)
-
-    # 2. astropy transform を適用
-    if scale_algo == "zscale":
-        # transform = AsinhStretch(a=1) + ZScaleInterval()
-        transform = LuptonAsinhStretch(Q=1) + ZScaleInterval()
-        # transform = LuptonAsinhZscaleStretch(image_array, Q=1)
-    else:
-        transform = AsinhStretch(a=1) + MinMaxInterval()
-
-    transformed_array = transform(image_array)
-
-    # 3. 新しい Image オブジェクトを作成
-    exp_disp = copy.deepcopy(exp)
-    # ImageF (float) または ImageD (double) で新しい Image を作成
-    new_image = afwImage.ImageF(transformed_array.astype(np.float32))
-    exp_disp.setImage(new_image)
-
-    logger.info(f"Original array dtype: {exp.image.array.dtype}")
-    logger.info(f"Original array shape: {exp.image.array.shape}")
-    logger.info(f"Transformed array dtype: {transformed_array.dtype}")
-    logger.info(f"Transformed array shape: {transformed_array.shape}")
-    logger.info(
-        f"Transformed array range: [{transformed_array.min()}, {transformed_array.max()}]"
-    )
-    logger.info(f"Has NaN: {np.any(np.isnan(transformed_array))}")
-    logger.info(f"Has Inf: {np.any(np.isinf(transformed_array))}")
-
-    disp.scale("linear", "minmax")
-
-    disp.mtv(exp_disp, title=title)
-
-    # # DetectorMap overlay
-    # if overlay:
-    #     if fiber_ids is None:
-    #         try:
-    #             # Default: highlight SCIENCE & observatoryfiller_ fibers
-    #             fiber_ids = [
-    #                 fid
-    #                 for fid, tt, ob in zip(
-    #                     pfs_config.fiberId, pfs_config.targetType, pfs_config.obCode
-    #                 )
-    #                 if (tt == TargetType.SCIENCE) and ("observatoryfiller_" in ob)
-    #             ]
-    #         except Exception:
-    #             fiber_ids = []
-    #     showDetectorMap(
-    #         disp, pfs_config, det_map, fiberIds=fiber_ids, width=4, alpha=0.5, xcen=0
-    #     )
-
-    # add cursor
-    addPfsCursor(disp, det_map)
-
-    logger.info("2D image built.")
-    return fig
+# Old matplotlib-based build_2d_figure() function removed
+# Now using HoloViews-based _build_single_2d_holoviews() and build_2d_figure_multi_arm()
 
 
-def _build_single_2d_subplot(
+def _build_single_2d_array(
     datastore: str,
     base_collection: str,
     visit: int,
@@ -332,27 +210,19 @@ def _build_single_2d_subplot(
     scale_algo: str = "zscale",
 ):
     """
-    Build 2D image data for a single arm/spectrograph combination.
+    Build transformed numpy array for a single arm/spectrograph combination.
     This is a helper function for parallel processing.
+
+    Returns only pickle-able objects (numpy arrays, not HoloViews objects).
 
     Returns
     -------
     tuple
-        (arm, fig, error_msg) where error_msg is None on success
+        (arm, transformed_array, metadata_dict, error_msg) where error_msg is None on success
     """
-    ARM_NAMES = {
-        'b': 'Blue',
-        'r': 'Red',
-        'n': 'NIR',
-        'm': 'Medium-Red'
-    }
+    ARM_NAMES = {"b": "Blue", "r": "Red", "n": "NIR", "m": "Medium-Red"}
 
     try:
-        if afwDisplay is None:
-            raise RuntimeError(
-                "afwDisplay is not available. Check LSST/PFS environment setup."
-            )
-
         b = get_butler(datastore, base_collection, visit)
         data_id = make_data_id(visit, spectrograph, arm)
 
@@ -381,17 +251,10 @@ def _build_single_2d_subplot(
             del _flux
         exp.image -= image
 
-        # Create individual figure
-        title = f"{ARM_NAMES.get(arm, arm)} ({arm}{spectrograph})"
-
-        fig = plt.figure(figsize=(10, 10))
-        afwDisplay.setDefaultBackend("matplotlib")
-        disp = afwDisplay.Display(fig, reopenPlot=False)
-
-        # 1. numpy array
+        # Get numpy array
         image_array = exp.image.array.astype(np.float64)
 
-        # 2. astropy transform
+        # Apply astropy transform
         if scale_algo == "zscale":
             transform = LuptonAsinhStretch(Q=1) + ZScaleInterval()
         else:
@@ -399,25 +262,211 @@ def _build_single_2d_subplot(
 
         transformed_array = transform(image_array)
 
-        # 3. new Image object
-        exp_disp = copy.deepcopy(exp)
-        new_image = afwImage.ImageF(transformed_array.astype(np.float32))
-        exp_disp.setImage(new_image)
+        logger.info(
+            f"Arm {arm}, SM{spectrograph}: Transformed array range: [{transformed_array.min()}, {transformed_array.max()}]"
+        )
 
-        logger.info(f"Arm {arm}, SM{spectrograph}: Transformed array range: [{transformed_array.min()}, {transformed_array.max()}]")
+        # Store metadata for HoloViews creation later
+        height, width = transformed_array.shape
+        logger.info(
+            f"Arm {arm}, SM{spectrograph}: Array shape = {transformed_array.shape} -> height={height}, width={width}"
+        )
 
-        disp.scale("linear", "minmax")
-        disp.mtv(exp_disp, title=title)
+        metadata = {
+            "title": f"{ARM_NAMES.get(arm, arm)} ({arm}{spectrograph})",
+            "width": width,
+            "height": height,
+            "spectrograph": spectrograph,
+        }
 
-        # add cursor
-        addPfsCursor(disp, det_map)
-
-        return (arm, fig, None)
+        return (arm, transformed_array, metadata, None)
 
     except Exception as e:
         error_msg = str(e)
-        logger.error(f"Failed to build 2D image for arm {arm}, SM{spectrograph}: {error_msg}")
-        return (arm, None, error_msg)
+        logger.error(
+            f"Failed to build 2D array for arm {arm}, SM{spectrograph}: {error_msg}"
+        )
+        return (arm, None, None, error_msg)
+
+
+def build_2d_arrays_multi_arm(
+    datastore: str,
+    base_collection: str,
+    visit: int,
+    spectrograph: int,
+    arms: list,
+    subtract_sky: bool = True,
+    overlay: bool = False,
+    fiber_ids=None,
+    scale_algo: str = "zscale",
+    n_jobs: int = -1,
+):
+    """
+    Build numpy arrays (pickle-able) for multiple arms.
+    This function is safe to use in parallel processing.
+
+    Parameters
+    ----------
+    arms : list of str
+        List of arms to display, e.g., ['b', 'r', 'n'] or ['b', 'm', 'n']
+    n_jobs : int, optional
+        Number of parallel jobs. -1 means use all available CPUs (default: -1)
+
+    Returns
+    -------
+    list of tuples
+        List of (arm, transformed_array, metadata, error_msg) tuples, one per arm
+    """
+    n_arms = len(arms)
+    if n_arms == 0:
+        raise ValueError("At least one arm must be specified")
+
+    logger.info(
+        f"Building 2D arrays for SM{spectrograph} with {n_arms} arm(s) using parallel processing (n_jobs={n_jobs})"
+    )
+
+    # Parallel processing: build transformed arrays (pickle-able)
+    array_results = Parallel(n_jobs=n_jobs, verbose=10)(
+        delayed(_build_single_2d_array)(
+            datastore,
+            base_collection,
+            visit,
+            spectrograph,
+            arm,
+            subtract_sky,
+            overlay,
+            fiber_ids,
+            scale_algo,
+        )
+        for arm in arms
+    )
+
+    logger.info(f"Arrays built for SM{spectrograph}")
+    return array_results
+
+
+def create_holoviews_from_arrays(array_results, spectrograph):
+    """
+    Create HoloViews images from numpy arrays.
+    Must be called in main thread (HoloViews objects are not pickle-able).
+
+    Parameters
+    ----------
+    array_results : list
+        List of (arm, transformed_array, metadata, error_msg) tuples
+    spectrograph : int
+        Spectrograph number
+
+    Returns
+    -------
+    list of tuples
+        List of (arm, hv.Image, error_msg) tuples
+    """
+    logger.info(f"Creating HoloViews images for SM{spectrograph} in main thread")
+
+    # Create HoloViews objects in main thread (not pickle-able, can't be parallelized)
+    hv_results = []
+    for arm, transformed_array, metadata, error_msg in array_results:
+        if transformed_array is not None and metadata is not None and error_msg is None:
+            try:
+                # Create HoloViews Image
+                height, width = metadata["height"], metadata["width"]
+
+                # Debug: Log actual image dimensions
+                logger.info(
+                    f"Image dimensions for {arm}: array shape={transformed_array.shape}, width={width}, height={height}"
+                )
+
+                # Flip array vertically so (0,0) is at lower-left corner (astronomical convention)
+                # HoloViews by default has (0,0) at upper-left, so we flip the array
+                flipped_array = np.flipud(transformed_array)
+
+                # Set bounds: (left, bottom, right, top)
+                # With flipped array, (0,0) will be at lower-left
+                # IMPORTANT: bounds should match the actual data dimensions
+                img = hv.Image(
+                    flipped_array,
+                    bounds=(0, 0, width, height),
+                    kdims=["x", "y"],
+                    vdims=["intensity"],
+                )
+
+                # Astropy transform already applied, use full range (0-100%) with linear scaling
+                vmin = transformed_array.min()
+                vmax = transformed_array.max()
+
+                # Create custom HoverTool with formatted coordinates
+                from bokeh.models import HoverTool
+
+                hover = HoverTool(
+                    tooltips=[
+                        (
+                            "X",
+                            "$x{0.0}",
+                        ),  # Use $x for cursor position, not @x (data column)
+                        ("Y", "$y{0.0}"),  # Use $y for cursor position
+                        (
+                            "Intensity",
+                            "@image{0.2f}",
+                        ),  # Use @image for pixel value in Image glyph
+                    ]
+                )
+
+                # Configure display options to match matplotlib appearance
+                # Note: Using Image directly without rasterize for proper hover functionality
+                # Calculate aspect ratio from actual data dimensions
+                aspect_ratio = width / height
+                logger.info(
+                    f"Image aspect ratio for {arm}: {aspect_ratio:.3f} (width={width}, height={height})"
+                )
+
+                # Set frame dimensions to maintain aspect ratio
+                # For landscape images (width > height), fix width and adjust height
+                # For portrait images (height > width), fix height and adjust width
+                if aspect_ratio >= 1.0:
+                    # Landscape or square: fix width
+                    plot_width = 800
+                    plot_height = int(800 / aspect_ratio)
+                else:
+                    # Portrait: fix height
+                    plot_height = 800
+                    plot_width = int(800 * aspect_ratio)
+
+                logger.info(f"Plot dimensions for {arm}: {plot_width}x{plot_height}")
+
+                img.opts(
+                    cmap="gray",
+                    clim=(vmin, vmax),  # Linear scaling of full range
+                    colorbar=True,
+                    tools=[hover, "box_zoom", "wheel_zoom", "pan", "reset", "save"],
+                    active_tools=["box_zoom"],
+                    default_tools=[],  # Disable default tools to prevent duplicate tooltips
+                    frame_width=plot_width,
+                    frame_height=plot_height,
+                    data_aspect=1.0,  # 1:1 pixel aspect ratio
+                    title=metadata["title"],
+                    xlabel="X (pixels)",
+                    ylabel="Y (pixels)",
+                    toolbar="above",
+                    axiswise=True,  # Disable axis linking between plots
+                    framewise=True,  # Each frame is independent
+                )
+
+                hv_results.append((arm, img, None))
+                logger.info(f"Created HoloViews image for arm {arm}, SM{spectrograph}")
+
+            except Exception as e:
+                error_msg = str(e)
+                logger.error(
+                    f"Failed to create HoloViews image for arm {arm}, SM{spectrograph}: {error_msg}"
+                )
+                hv_results.append((arm, None, error_msg))
+        else:
+            # Pass through the error from array generation
+            hv_results.append((arm, None, error_msg))
+
+    logger.info(f"HoloViews images created for spectrograph {spectrograph}")
+    return hv_results
 
 
 def build_2d_figure_multi_arm(
@@ -433,8 +482,8 @@ def build_2d_figure_multi_arm(
     n_jobs: int = -1,
 ):
     """
-    Build figures with multiple arms (b, r, n, m) for a single spectrograph.
-    Uses parallel processing via joblib to speed up computation.
+    Build HoloViews images with multiple arms (b, r, n, m) for a single spectrograph.
+    This is a convenience wrapper that combines array building and HoloViews creation.
 
     Parameters
     ----------
@@ -446,80 +495,31 @@ def build_2d_figure_multi_arm(
     Returns
     -------
     list of tuples
-        List of (arm, Figure, error_msg) tuples, one per arm
+        List of (arm, hv.Image, error_msg) tuples, one per arm
     """
-    ARM_NAMES = {
-        'b': 'Blue',
-        'r': 'Red',
-        'n': 'NIR',
-        'm': 'Medium-Red'
-    }
-
-    n_arms = len(arms)
-    if n_arms == 0:
-        raise ValueError("At least one arm must be specified")
-
-    logger.info(f"Building 2D images for SM{spectrograph} with {n_arms} arm(s) using parallel processing (n_jobs={n_jobs})")
-
-    # Parallel processing: build each arm's figure independently
-    results = Parallel(n_jobs=n_jobs, verbose=10)(
-        delayed(_build_single_2d_subplot)(
-            datastore, base_collection, visit, spectrograph, arm,
-            subtract_sky, overlay, fiber_ids, scale_algo
-        )
-        for arm in arms
+    # Build arrays in parallel
+    array_results = build_2d_arrays_multi_arm(
+        datastore,
+        base_collection,
+        visit,
+        spectrograph,
+        arms,
+        subtract_sky,
+        overlay,
+        fiber_ids,
+        scale_algo,
+        n_jobs,
     )
 
-    logger.info(f"Multi-arm 2D images built for spectrograph {spectrograph} with arms {arms}")
-    return results
+    # Create HoloViews objects in main thread
+    hv_results = create_holoviews_from_arrays(array_results, spectrograph)
+
+    return hv_results
 
 
 # --- 1D spectra builder (single visit) ---
-def build_1d_figure_single_visit(
-    datastore: str,
-    base_collection: str,
-    visit: int,
-    fiber_ids,
-    ylim=(-5000, 10000),
-) -> Figure:
-    """
-    指定 visit の選択ファイバー 1D スペクトルを重ね描きする。
-    """
-    b = get_butler(datastore, base_collection, visit)
-    pfsConfig = b.get("pfsConfig", visit=visit)
-    pfsMerged = b.get("pfsMerged", visit=visit)
-
-    fig = plt.figure(figsize=(9, 5))
-    ax = fig.subplots()
-
-    try:
-        # 複数ファイバー重ね描き
-        for fid in fiber_ids:
-            sel = pfsMerged.select(pfsConfig, fiberId=fid)
-            wav = sel.wavelength[0]
-            flx = sel.flux[0]
-            var = sel.variance[0]
-            err = (var**0.5) if var is not None else None
-
-            ax.plot(wav, flx, lw=1, alpha=0.85, label=f"fid={fid}")
-            if err is not None:
-                ax.fill_between(wav, flx - err, flx + err, color="C1", alpha=0.25)
-
-        ax.legend(loc="upper left", fontsize=9)
-        ax.set_title(f"visit={visit}")
-        ax.set_xlabel("Wavelength (nm)")
-        ax.set_ylabel("Flux (electrons/nm)")
-        ax.axhline(0, ls="--", c="k", lw=1)
-        if ylim:
-            ax.set_ylim(*ylim)
-    except Exception as e:
-        plt.close(fig)
-        fig = Figure(figsize=(8, 3))
-        ax = fig.subplots()
-        ax.text(0.02, 0.5, f"1D build failed:\n{e}", va="center")
-        ax.axis("off")
-
-    return fig
+# Old matplotlib-based build_1d_figure_single_visit() function removed
+# Now using Bokeh-based build_1d_bokeh_figure_single_visit()
 
 
 # --- 1D spectra builder using Bokeh (single visit) ---

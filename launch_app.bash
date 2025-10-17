@@ -34,4 +34,4 @@ python -m panel serve app.py --address 0.0.0.0 --allow-websocket-origin=pfsa-usr
 
 
 # Notes
-# python3 -m pip install --target "$LSST_PYTHON_USERLIB" panel watchfiles loguru ipywidgets_bokeh ipympl python-dotenv joblib
+# python3 -m pip install --target "$LSST_PYTHON_USERLIB" panel watchfiles loguru ipywidgets_bokeh ipympl python-dotenv joblib datashader "holoviews[recommended]"
