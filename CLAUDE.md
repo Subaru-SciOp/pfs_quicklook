@@ -20,10 +20,10 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
 
 **Sidebar Structure**:
 1. **Instrument Settings**
-   - Arm selection: `brn`, `bmn` (radio button group)
    - Spectrograph selection: 1, 2, 3, 4 (checkbox group)
+   - Note: Arm selection removed - application automatically attempts to load all 4 arms (b, r, n, m)
 
-2. **Data Selection** ([app.py:335-340](app.py#L335-L340))
+2. **Data Selection**
    - Visit selection: MultiChoice widget with search functionality (no limit on displayed options)
    - **Load Data** button: Loads visit data and populates OB Code options
    - Status display: Shows current state (Ready/Loading/Loaded with fiber & OB code counts)
@@ -107,17 +107,21 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
   - **Tools**: Hover displays pixel coordinates and intensity values
   - **Performance**: 5-10× faster initial load compared to static images
 - **Multiple Arm/Spectrograph Support** ([quicklook_core.py:205-369](quicklook_core.py#L205-L369)):
-  - Fully supports all selected arms and spectrographs
+  - Automatically attempts to load all 4 arms (b, r, n, m) for each spectrograph
   - Parallel processing via joblib for high performance
   - Two-level parallelization:
     - Level 1: Spectrographs processed in parallel
     - Level 2: Arms within each spectrograph processed in parallel
-  - Maximum of 12 images (4 spectrographs × 3 arms) can be processed simultaneously
+  - Maximum of 16 images (4 spectrographs × 4 arms) can be processed simultaneously
   - Utilizes all available CPU cores (128 cores on target system)
-- **Display Layout** ([app.py:302-373](app.py#L302-L373)):
+- **Display Layout** ([app.py:310-415](app.py#L310-L415)):
   - Tabbed interface: SM1, SM2, SM3, SM4 (one tab per selected spectrograph)
   - Within each tab: Panel Row layout with arms arranged horizontally
-  - Arm names: Blue (b), Red (r), NIR (n), Medium-Red (m)
+  - Arm display order automatically determined:
+    - "brn" order (Blue, Red, NIR) if Red arm data exists
+    - "bmn" order (Blue, Medium-Red, NIR) if Medium-Red arm data exists
+  - Only existing arms are displayed (no placeholders for missing data)
+  - Missing arms indicated by informational note below plots
   - Each pane is a HoloViews Image with Bokeh backend
 - **Data Processing**:
   - Sky-subtracted 2D spectral images (sky1d subtraction via `subtractSky1d`)
@@ -126,10 +130,11 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
     - **minmax**: `AsinhStretch(a=1) + MinMaxInterval()`
   - HoloViews Image with datashader rasterization
   - Image reconstruction from 1D spectra using fiberProfiles and detectorMap
-- **Error Handling** ([app.py:314-361](app.py#L314-L361)):
-  - Missing data: Displays placeholder with "Data Not Available" message
-  - Processing errors: Shows detailed error information
+- **Error Handling** ([app.py:319-415](app.py#L319-L415)):
+  - Missing data: Only displays available arms, with informational note for missing arms
+  - Processing errors: Shows error details in informational note below plots
   - Graceful degradation: Continues processing available data when some combinations fail
+  - No placeholder images for missing data (cleaner UI)
 
 **1D Spectra Display** ([quicklook_core.py:274-431](quicklook_core.py#L274-L431)):
 - Interactive Bokeh plots for 1D spectra
@@ -507,39 +512,113 @@ python3 -m pip install --target "$LSST_PYTHON_USERLIB" panel watchfiles loguru i
 
 ## Recent Changes
 
-### 2025-10-16: Migration to HoloViews + Datashader for Interactive 2D Visualization
+### 2025-10-16: Automatic All-Arm Loading with Smart Display Order
+
+1. **Arm Selection Widget Removed** ([app.py:65-67](app.py#L65-L67)):
+   - Removed `arm_rbg` (RadioButtonGroup) widget from UI
+   - Removed "Arm" section from sidebar
+   - Application now automatically attempts to load all 4 arms (b, r, n, m)
+   - Simplifies UI by removing unnecessary user choice
+
+2. **Smart Arm Display Order** ([app.py:359-385](app.py#L359-L385)):
+   - Automatically determines display order based on available data:
+     - If Red (r) exists: displays in "brn" order (Blue, Red, NIR)
+     - If Medium-Red (m) exists: displays in "bmn" order (Blue, Medium-Red, NIR)
+     - Handles edge cases (both r and m, or only b and n)
+   - Only displays arms that have data (no empty placeholders)
+   - Cleaner visual presentation
+
+3. **Improved Error Handling** ([app.py:390-413](app.py#L390-L413)):
+   - Missing arms: Shows concise informational note below plots
+     - Example: "_Note: Red, Medium-Red arm(s) not available for this visit_"
+   - Processing errors: Displays error details in notes section
+   - No placeholder images for missing data (cleaner UI)
+   - Maintains full plot area for existing data
+
+4. **Enhanced Parallel Processing**:
+   - Now attempts to load all 4 arms simultaneously
+   - Maximum of 16 images (4 spectrographs × 4 arms) processed in parallel
+   - Better utilization of available CPU cores
+   - Faster detection of missing data
+
+5. **Log Output Updates**:
+   - Removed arm selection from log messages
+   - Updated status messages to reflect automatic arm loading
+   - Clearer indication of which arms were successfully loaded
+
+**Benefits**:
+- Simpler UI (one less widget to configure)
+- Automatic detection of available arms
+- Proper display order for brn/bmn configurations
+- Cleaner visual presentation without empty placeholders
+- Faster workflow (no need to select arms manually)
+
+### 2025-10-16: HoloViews Migration Complete with Aspect Ratio Fix and Visit Date Filtering
 
 1. **Complete Matplotlib Removal**:
-   - Replaced all matplotlib-based 2D rendering with HoloViews + Datashader
+   - Replaced all matplotlib-based 2D rendering with HoloViews (direct Image, no datashader)
    - Removed `build_2d_figure()` function (matplotlib-based)
    - Removed `build_1d_figure_single_visit()` function (matplotlib-based)
    - Removed matplotlib imports (`matplotlib.pyplot`, `matplotlib.figure.Figure`)
    - Removed `afwDisplay` import (only used for matplotlib rendering)
    - Removed `addPfsCursor` and `showDetectorMap` imports (matplotlib utilities)
+   - Removed unused imports: `afwImage`, `TargetType`, `copy` module
+   - Removed `holoviews.operation.datashader.rasterize` import (not needed)
 
-2. **New HoloViews Implementation** ([quicklook_core.py:205-369](quicklook_core.py#L205-L369)):
-   - `_build_single_2d_holoviews()`: Creates HoloViews Image with datashader rasterization
-   - `build_2d_figure_multi_arm()`: Updated to return HoloViews Images instead of matplotlib Figures
-   - Server-side rendering with dynamic resolution adjustment
-   - Interactive tools: zoom, pan, hover, box_zoom, wheel_zoom, reset, save
-   - Performance: `precompute=False` with `dynamic=True` for on-demand rendering
+2. **New HoloViews Implementation** ([quicklook_core.py:220-500](quicklook_core.py#L220-L500)):
+   - `_build_single_2d_array()`: Pickle-able worker function that builds transformed numpy arrays
+   - `build_2d_arrays_multi_arm()`: Parallel array generation for multiple arms
+   - `create_holoviews_from_arrays()`: Creates HoloViews Image objects in main thread (not pickle-able)
+   - `build_2d_figure_multi_arm()`: Convenience wrapper combining array building and HoloViews creation
+   - **Direct HoloViews Image** (no datashader rasterization) to preserve hover functionality
+   - Interactive tools: hover, box_zoom, wheel_zoom, pan, undo, redo, reset, save
+   - **Aspect Ratio Fix**: Calculates `frame_width` and `frame_height` from actual data dimensions
+     - For landscape/square images: fixes width at 512px, adjusts height proportionally
+     - For portrait images: fixes height at 512px, adjusts width proportionally
+     - Ensures 4k×4k images display as perfect squares with 1:1 pixel aspect ratio
 
-3. **App Integration** ([app.py:302-313](app.py#L302-L313)):
+3. **Hover Tooltip Improvements** ([quicklook_core.py:425-436](quicklook_core.py#L425-L436)):
+   - Custom `HoverTool` with formatted coordinate display
+   - Coordinates: `$x{0.0}` and `$y{0.0}` format (shows cursor position like "1000.0")
+   - Intensity: `@image{0.2f}` format (shows pixel value from Image glyph)
+   - No duplicate tooltips (using `default_tools=[]`)
+
+4. **Visit Date Filtering** ([quicklook_core.py:144-182](quicklook_core.py#L144-L182)):
+   - `discover_visits()` now filters visits by observation date (`obsdate_utc`)
+   - Uses parallel processing (max 16 cores) to check `pfsConfig.obstime` for each visit
+   - If `obsdate_utc` is empty or `None`, returns all visits without filtering
+   - Logs filtering progress: "Found X visits out of Y visits under collection (filtered by date)"
+   - Efficient for large numbers of visits in the Butler registry
+
+5. **App Integration** ([app.py:302-313](app.py#L302-L313)):
    - Changed from `pn.pane.Matplotlib()` to `pn.pane.HoloViews(backend='bokeh')`
+   - 1D plot pane changed from `pn.pane.Bokeh` to `pn.Column` for flexibility
    - Maintains same layout structure (tabs, rows)
    - Same error handling and graceful degradation
 
-4. **Dependencies**:
+6. **Visual Improvements**:
+   - Colormap changed from `gray` to `cividis` (more perceptually uniform)
+   - Plot size reduced from 800px to 512px for better layout
+   - Added `undo`/`redo` tools to toolbar
+   - Linear scaling with `clim=(vmin, vmax)` based on array min/max values
+
+7. **Dependencies**:
    - Added `holoviews>=1.18.0`
-   - Added `datashader>=0.16.0`
+   - Added `datashader>=0.16.0` (for potential future use)
    - Added `colorcet` (additional colormaps)
    - Removed `ipympl` (matplotlib widget support, no longer needed)
-   - Added `joblib` (already in use, now explicit)
+   - `joblib` explicitly listed (already in use)
 
-5. **Benefits**:
-   - **Interactive**: Full zoom/pan capabilities on all 2D images
-   - **Performance**: 5-10× faster initial load, <100ms zoom/pan latency
-   - **Scalability**: Server-side rendering sends only visible viewport to browser
+8. **Logging Configuration**:
+   - Set logger level to INFO in both `quicklook_core.py` and `app.py`
+   - `logger.remove()` and `logger.add(sys.stdout, level="INFO")` for consistent output
+
+9. **Benefits**:
+   - **Interactive**: Full zoom/pan capabilities on all 2D images with independent controls per detector
+   - **Correct Aspect Ratio**: 4k×4k images display as perfect squares
+   - **Hover Tooltips**: Show formatted coordinates (1000.0) and pixel intensity values
+   - **Date Filtering**: Efficiently filter visits by observation date
+   - **Performance**: Parallel processing at both spectrograph and arm levels
    - **Cleaner Code**: Removed ~200 lines of matplotlib-specific code
 
 ### 2025-10-16: Multi-Arm/Spectrograph Support with Parallel Processing

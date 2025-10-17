@@ -62,22 +62,21 @@ pn.state.onload(on_session_created)
 
 
 # --- Widgets ---
-arm_rbg = pn.widgets.RadioButtonGroup(
-    name="Arm",
-    options=["brn", "bmn"],
-    value="brn",
-    button_type="light",
-)
+# Arm selection widget removed - always attempt to load all 4 arms (b, r, n, m)
+# Display order will be brn or bmn depending on which arms have data
 spectro_cbg = pn.widgets.CheckButtonGroup(
     name="Spectrograph",
     options=[1, 2, 3, 4],
     value=[1, 2, 3, 4],
-    button_type="light",
+    button_type="primary",
+    button_style="outline",
+    sizing_mode="stretch_width",
 )
 
 visit_mc = pn.widgets.MultiChoice(
     name="Visit",
     options=[],
+    max_items=1,  # temporary limit to single visit mode
 )
 
 obcode_mc = pn.widgets.MultiChoice(
@@ -241,7 +240,8 @@ def plot_2d_callback(event=None):
         if isinstance(spectro_cbg.value, list)
         else [spectro_cbg.value]
     )
-    arms = list(arm_rbg.value)
+    # Always attempt to load all 4 arms
+    all_arms = ["b", "r", "n", "m"]
     fibers = list(fibers_mc.value) if fibers_mc.value else None
 
     subtract_sky = subtract_sky_chk.value
@@ -252,10 +252,10 @@ def plot_2d_callback(event=None):
         pn.state.notifications.warning("DetectorMap overlay is not supported yet.")
 
     try:
-        n_total = len(spectros) * len(arms)
-        status_text.object = f"**Creating {n_total} 2D plot(s)...**"
+        n_total = len(spectros) * len(all_arms)
+        status_text.object = "**Checking data availability and creating 2D plots...**"
         logger.info(
-            f"Building 2D plots: {len(spectros)} spectrographs × {len(arms)} arms = {n_total} total images"
+            f"Attempting to load all {len(all_arms)} arms for {len(spectros)} spectrographs"
         )
 
         # Process spectrographs in parallel (only array generation)
@@ -265,14 +265,14 @@ def plot_2d_callback(event=None):
 
         def build_arrays_for_spectrograph(spectro):
             """Build arrays for a single spectrograph (pickle-able)"""
-            logger.info(f"Building 2D arrays for SM{spectro} with arms {arms}")
+            logger.info(f"Building 2D arrays for SM{spectro} with all arms {all_arms}")
             try:
                 array_results = build_2d_arrays_multi_arm(
                     datastore=DATASTORE,
                     base_collection=BASE_COLLECTION,
                     visit=visit,
                     spectrograph=spectro,
-                    arms=arms,
+                    arms=all_arms,
                     subtract_sky=subtract_sky,
                     overlay=overlay,
                     fiber_ids=fibers if overlay else None,
@@ -319,65 +319,39 @@ def plot_2d_callback(event=None):
                     pn.state.notifications.error(f"Invalid result type for SM{spectro}")
                     continue
 
-                # Create a Row layout with all arm HoloViews images
-                arm_panes = []
+                # Separate successful plots from missing/error arms
+                successful_arms = {}  # arm -> HoloViews pane
+                missing_arms = []  # List of missing arm names
+                error_arms = []  # List of (arm, error_msg) tuples for real errors
+
                 try:
                     for arm, hv_img, arm_error in arm_results:
                         if hv_img is not None and arm_error is None:
-                            arm_panes.append(
-                                pn.pane.HoloViews(
-                                    hv_img,
-                                    backend="bokeh",
-                                    # Don't use sizing_mode to preserve aspect ratio set in HoloViews
-                                )
+                            # Successfully loaded
+                            successful_arms[arm] = pn.pane.HoloViews(
+                                hv_img,
+                                backend="bokeh",
+                                # Don't use sizing_mode to preserve aspect ratio set in HoloViews
                             )
                         else:
-                            # Create error placeholder
-                            arm_name = ARM_NAMES.get(arm, arm)
-
                             # Check if it's a "not found" error (data doesn't exist)
                             is_not_found = (
                                 arm_error and "could not be found" in arm_error
                             )
 
+                            arm_name = ARM_NAMES.get(arm, arm)
+
                             if is_not_found:
-                                # More concise message for missing data
-                                error_text = f"""
-### {arm_name} ({arm}{spectro})
-
-**Data Not Available**
-
-This arm/spectrograph combination does not have data for this visit.
-
-_Error: Dataset not found in collection_
-"""
+                                # Data doesn't exist - add to missing list
+                                missing_arms.append(arm_name)
                                 logger.info(
                                     f"SM{spectro} {arm_name}: Data not available (expected for some configurations)"
                                 )
                             else:
-                                # Full error for other types of errors
-                                error_text = f"""
-### {arm_name} ({arm}{spectro})
-
-**Error Loading Data**
-
-```
-{arm_error}
-```
-"""
+                                # Real error - add to error list
+                                error_arms.append((arm_name, arm_error))
                                 logger.warning(f"SM{spectro} {arm_name}: {arm_error}")
 
-                            arm_panes.append(
-                                pn.pane.Markdown(
-                                    error_text,
-                                    sizing_mode="stretch_width",
-                                    styles={
-                                        "background": "#f0f0f0",
-                                        "padding": "20px",
-                                        "border": "1px solid #ddd",
-                                    },
-                                )
-                            )
                 except Exception as e:
                     logger.error(f"Error iterating arm_results for SM{spectro}: {e}")
                     pn.state.notifications.error(
@@ -385,11 +359,61 @@ _Error: Dataset not found in collection_
                     )
                     continue
 
-                if arm_panes:
-                    # Arrange arms horizontally
-                    spectrograph_panels[spectro] = pn.Row(
-                        *arm_panes, sizing_mode="stretch_width"
-                    )
+                # Determine display order based on which arms are available
+                # brn order: b, r, n
+                # bmn order: b, m, n
+                if successful_arms:
+                    # Check if we have 'r' or 'm' to determine order
+                    has_r = "r" in successful_arms
+                    has_m = "m" in successful_arms
+
+                    if has_r and not has_m:
+                        # brn configuration
+                        display_order = ["b", "r", "n"]
+                    elif has_m and not has_r:
+                        # bmn configuration
+                        display_order = ["b", "m", "n"]
+                    elif has_r and has_m:
+                        # Both exist (unusual), prefer brn order
+                        display_order = ["b", "r", "n", "m"]
+                    else:
+                        # Only b and/or n
+                        display_order = ["b", "n"]
+
+                    # Create arm panes in the determined order
+                    arm_panes = [
+                        successful_arms[arm]
+                        for arm in display_order
+                        if arm in successful_arms
+                    ]
+
+                    # Create the row with successful arms
+                    arm_row = pn.Row(*arm_panes, sizing_mode="stretch_width")
+
+                    # Create informational notes for missing/error arms
+                    notes = []
+                    if missing_arms:
+                        missing_str = ", ".join(missing_arms)
+                        notes.append(
+                            f"_Note: {missing_str} arm(s) not available for this visit_"
+                        )
+
+                    if error_arms:
+                        for arm_name, err_msg in error_arms:
+                            notes.append(f"_Error loading {arm_name}: {err_msg}_")
+
+                    # Combine row and notes
+                    if notes:
+                        notes_md = pn.pane.Markdown(
+                            "\n\n".join(notes),
+                            sizing_mode="stretch_width",
+                            styles={"font-size": "0.9em", "color": "#666"},
+                        )
+                        spectrograph_panels[spectro] = pn.Column(
+                            arm_row, notes_md, sizing_mode="stretch_width"
+                        )
+                    else:
+                        spectrograph_panels[spectro] = arm_row
                 else:
                     logger.warning(f"SM{spectro}: No valid arm panes created")
             else:
@@ -425,7 +449,6 @@ _Error: Dataset not found in collection_
         fiber_info = f"{len(fibers)} selected" if fibers else "none"
         log_md.object = f"""**2D plot created**
 - visit: {visit}
-- arms: {', '.join(arms)}
 - spectrographs: {', '.join([f'SM{s}' for s in sorted(spectros)])}
 - fibers: {fiber_info}
 - subtract_sky: {subtract_sky}, overlay: {overlay}, scale: {scale_algo}
@@ -519,8 +542,7 @@ fibers_mc.param.watch(on_fiber_change, "value")
 # --- Layout ---
 sidebar = pn.Column(
     # "## Instrument Settings",
-    "#### Arm",
-    arm_rbg,
+    # Arm selection removed - always attempt to load all 4 arms
     "#### Spectrograph",
     spectro_cbg,
     #
