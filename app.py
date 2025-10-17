@@ -38,6 +38,43 @@ logger.remove()  # Remove default handler
 logger.add(sys.stdout, level="INFO")
 
 
+# --- Session State Management ---
+def get_session_state():
+    """Get session-specific state object
+
+    Uses pn.state.curdoc.session_context.app_state (public attribute)
+    to ensure each browser session has independent state.
+
+    This approach is recommended over using private attributes like
+    _session_state, as it uses the public API and is more stable
+    across Panel versions.
+
+    Returns:
+        dict: Session-specific state dictionary
+    """
+    ctx = pn.state.curdoc.session_context
+
+    # Initialize app_state as a public attribute on session_context
+    if not hasattr(ctx, "app_state"):
+        ctx.app_state = {
+            "visit_data": {
+                "loaded": False,
+                "visit": None,
+                "pfsConfig": None,
+                "obcode_to_fibers": {},
+                "fiber_to_obcode": {},
+            },
+            "programmatic_update": False,
+            "visit_discovery": {
+                "status": None,
+                "result": None,
+                "error": None,
+            },
+        }
+
+    return ctx.app_state
+
+
 # --- Widgets ---
 # Arm selection widget removed - always attempt to load all 4 arms (b, r, n, m)
 # Display order will be brn or bmn depending on which arms have data
@@ -123,6 +160,21 @@ tabs = pn.Tabs(
 )
 
 
+def toggle_buttons(disabled=True, include_load=False):
+    """Enable or disable all action buttons
+
+    Args:
+        disabled: If True, disable buttons. If False, enable buttons.
+        include_load: If True, also toggle the Load Data button.
+    """
+    if include_load:
+        btn_load_data.disabled = disabled
+    btn_plot_2d.disabled = disabled
+    btn_plot_1d.disabled = disabled
+    btn_plot_1d_image.disabled = disabled
+    btn_reset.disabled = disabled
+
+
 # --- Callbacks ---
 def load_data_callback(event=None):
     """Load visit data and update OB Code options"""
@@ -133,14 +185,18 @@ def load_data_callback(event=None):
 
     visit = list(visit_mc.value)[0]
 
+    # Disable all buttons during loading
+    toggle_buttons(disabled=True, include_load=True)
+
     try:
         status_text.object = f"**Loading visit {visit}...**"
         pfsConfig, obcode_to_fibers, fiber_to_obcode = load_visit_data(
             DATASTORE, BASE_COLLECTION, visit
         )
 
-        # Update session cache
-        pn.state.cache["visit_data"] = {
+        # Update session state
+        state = get_session_state()
+        state["visit_data"] = {
             "loaded": True,
             "visit": visit,
             "pfsConfig": pfsConfig,
@@ -149,15 +205,11 @@ def load_data_callback(event=None):
         }
 
         # Update OB Code options
-        pn.state.cache["programmatic_update"] = True
+        state["programmatic_update"] = True
         obcode_mc.options = sorted(obcode_to_fibers.keys())
         obcode_mc.value = []  # Clear selection
-        pn.state.cache["programmatic_update"] = False
-
-        # Enable plot buttons
-        btn_plot_2d.disabled = False
-        btn_plot_1d.disabled = False
-        btn_plot_1d_image.disabled = False
+        fibers_mc.value = []  # Clear selection
+        state["programmatic_update"] = False
 
         num_fibers = len(pfsConfig.fiberId)
         num_obcodes = len(obcode_to_fibers)
@@ -176,17 +228,30 @@ def load_data_callback(event=None):
         pn.state.notifications.error(f"Failed to load visit data: {e}")
         logger.error(f"Failed to load visit data: {e}")
         status_text.object = "**Error loading data**"
+        # On error, disable plot buttons
         btn_plot_2d.disabled = True
         btn_plot_1d.disabled = True
         btn_plot_1d_image.disabled = True
+    finally:
+        # Always re-enable Load Data and Reset buttons
+        btn_load_data.disabled = False
+        btn_reset.disabled = False
+        # Enable plot buttons only if data was loaded successfully
+        state = get_session_state()
+        if state["visit_data"]["loaded"]:
+            btn_plot_2d.disabled = False
+            btn_plot_1d.disabled = False
+            btn_plot_1d_image.disabled = False
 
 
 def on_obcode_change(event):
     """Update Fiber ID selection based on OB Code selection"""
-    if pn.state.cache.get("programmatic_update", False):
+    state = get_session_state()
+
+    if state["programmatic_update"]:
         return
 
-    if not pn.state.cache["visit_data"]["loaded"]:
+    if not state["visit_data"]["loaded"]:
         return
 
     selected_obcodes = obcode_mc.value
@@ -194,15 +259,15 @@ def on_obcode_change(event):
         return
 
     # Get fiber IDs for selected OB codes
-    obcode_to_fibers = pn.state.cache["visit_data"]["obcode_to_fibers"]
+    obcode_to_fibers = state["visit_data"]["obcode_to_fibers"]
     fiber_ids = []
     for obcode in selected_obcodes:
         fiber_ids.extend(obcode_to_fibers.get(obcode, []))
 
     # Update fiber selection
-    pn.state.cache["programmatic_update"] = True
+    state["programmatic_update"] = True
     fibers_mc.value = sorted(set(fiber_ids))
-    pn.state.cache["programmatic_update"] = False
+    state["programmatic_update"] = False
 
     logger.info(
         f"Selected {len(fiber_ids)} fibers from {len(selected_obcodes)} OB codes"
@@ -211,10 +276,12 @@ def on_obcode_change(event):
 
 def on_fiber_change(event):
     """Update OB Code selection based on Fiber ID selection"""
-    if pn.state.cache.get("programmatic_update", False):
+    state = get_session_state()
+
+    if state["programmatic_update"]:
         return
 
-    if not pn.state.cache["visit_data"]["loaded"]:
+    if not state["visit_data"]["loaded"]:
         return
 
     selected_fibers = fibers_mc.value
@@ -222,7 +289,7 @@ def on_fiber_change(event):
         return
 
     # Get OB codes for selected fiber IDs
-    fiber_to_obcode = pn.state.cache["visit_data"]["fiber_to_obcode"]
+    fiber_to_obcode = state["visit_data"]["fiber_to_obcode"]
     obcodes = set()
     for fiber_id in selected_fibers:
         obcode = fiber_to_obcode.get(fiber_id)
@@ -230,20 +297,25 @@ def on_fiber_change(event):
             obcodes.add(obcode)
 
     # Update OB code selection
-    pn.state.cache["programmatic_update"] = True
+    state["programmatic_update"] = True
     obcode_mc.value = sorted(obcodes)
-    pn.state.cache["programmatic_update"] = False
+    state["programmatic_update"] = False
 
     logger.info(f"Selected {len(obcodes)} OB codes from {len(selected_fibers)} fibers")
 
 
 def plot_2d_callback(event=None):
     """Create 2D plot with support for multiple arms and spectrographs"""
-    if not pn.state.cache["visit_data"]["loaded"]:
+    state = get_session_state()
+
+    if not state["visit_data"]["loaded"]:
         pn.state.notifications.warning("Load data first.")
         return
 
-    visit = pn.state.cache["visit_data"]["visit"]
+    # Disable all buttons during processing
+    toggle_buttons(disabled=True, include_load=True)
+
+    visit = state["visit_data"]["visit"]
     spectros = (
         spectro_cbg.value
         if isinstance(spectro_cbg.value, list)
@@ -467,11 +539,16 @@ def plot_2d_callback(event=None):
         pn.state.notifications.error(f"Failed to show 2D image: {e}")
         logger.error(f"Failed to show 2D image: {e}")
         status_text.object = "**Error creating 2D plot**"
+    finally:
+        # Re-enable buttons after processing
+        toggle_buttons(disabled=False, include_load=False)
 
 
 def plot_1d_callback(event=None):
     """Create 1D plot using Bokeh"""
-    if not pn.state.cache["visit_data"]["loaded"]:
+    state = get_session_state()
+
+    if not state["visit_data"]["loaded"]:
         pn.state.notifications.warning("Load data first.")
         return
 
@@ -480,7 +557,10 @@ def plot_1d_callback(event=None):
         logger.warning("No fiber ID selected.")
         return
 
-    visit = pn.state.cache["visit_data"]["visit"]
+    # Disable all buttons during processing
+    toggle_buttons(disabled=True, include_load=True)
+
+    visit = state["visit_data"]["visit"]
     fibers = list(fibers_mc.value)
 
     try:
@@ -511,15 +591,23 @@ def plot_1d_callback(event=None):
         pn.state.notifications.error(f"Failed to show 1D spectra: {e}")
         logger.error(f"Failed to show 1D spectra: {e}")
         status_text.object = "**Error creating 1D plot**"
+    finally:
+        # Re-enable buttons after processing
+        toggle_buttons(disabled=False, include_load=False)
 
 
 def plot_1d_image_callback(event=None):
     """Create 2D representation of all 1D spectra"""
-    if not pn.state.cache["visit_data"]["loaded"]:
+    state = get_session_state()
+
+    if not state["visit_data"]["loaded"]:
         pn.state.notifications.warning("Load data first.")
         return
 
-    visit = pn.state.cache["visit_data"]["visit"]
+    # Disable all buttons during processing
+    toggle_buttons(disabled=True, include_load=True)
+
+    visit = state["visit_data"]["visit"]
     fibers = list(fibers_mc.value) if fibers_mc.value else None
     scale_algo = scale_sel.value
 
@@ -556,6 +644,9 @@ def plot_1d_image_callback(event=None):
         pn.state.notifications.error(f"Failed to create 1D spectra image: {e}")
         logger.error(f"Failed to create 1D spectra image: {e}")
         status_text.object = "**Error creating 1D spectra image**"
+    finally:
+        # Re-enable buttons after processing
+        toggle_buttons(disabled=False, include_load=False)
 
 
 def reset_app(event=None):
@@ -566,8 +657,9 @@ def reset_app(event=None):
     log_md.object = "**Reset.**"
     status_text.object = "**Ready**"
 
-    # Clear cache
-    pn.state.cache["visit_data"] = {
+    # Clear session state
+    state = get_session_state()
+    state["visit_data"] = {
         "loaded": False,
         "visit": None,
         "pfsConfig": None,
@@ -575,10 +667,12 @@ def reset_app(event=None):
         "fiber_to_obcode": {},
     }
 
-    # Disable plot buttons
+    # Disable plot buttons, enable Load Data and Reset
     btn_plot_2d.disabled = True
     btn_plot_1d.disabled = True
     btn_plot_1d_image.disabled = True
+    btn_load_data.disabled = False
+    btn_reset.disabled = False
 
     # Clear OB Code and Fiber ID selections
     obcode_mc.options = []
@@ -589,13 +683,8 @@ def reset_app(event=None):
 # --- Asynchronous visit discovery ---
 def get_visit_discovery_state():
     """Get or create visit discovery state for current session"""
-    if "visit_discovery" not in pn.state.cache:
-        pn.state.cache["visit_discovery"] = {
-            "status": None,
-            "result": None,
-            "error": None,
-        }
-    return pn.state.cache["visit_discovery"]
+    state = get_session_state()
+    return state["visit_discovery"]
 
 
 def discover_visits_worker(state_dict):
@@ -719,17 +808,9 @@ def on_session_created():
     )
     pn.state.notifications.info("Configuration loaded from .env file")
 
-    # Initialize session cache
-    if "visit_data" not in pn.state.cache:
-        pn.state.cache["visit_data"] = {
-            "loaded": False,
-            "visit": None,
-            "pfsConfig": None,
-            "obcode_to_fibers": {},
-            "fiber_to_obcode": {},
-        }
-    if "programmatic_update" not in pn.state.cache:
-        pn.state.cache["programmatic_update"] = False
+    # Initialize session state (automatically done by get_session_state())
+    # This call ensures the state is initialized for this session
+    get_session_state()
 
     # Reset visit widget to loading state
     visit_mc.placeholder = "Loading visits..."
