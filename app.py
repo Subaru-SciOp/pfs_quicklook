@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-PFS QuickLook Panel App (2D/1Dのみ)
+PFS QuickLook Panel App (2D/1D)
 - Sidebar: visit / arm / spectrograph / fibers / options
 - Tabs: 2D / 1D / Log
 - Run/Reset/Export(PNG)
@@ -88,7 +88,6 @@ fibers_mc = pn.widgets.MultiChoice(
     options=np.arange(1, 2395, dtype=int).tolist(),
     option_limit=20,
     search_option_limit=10,
-    # solid=False,
 )
 
 subtract_sky_chk = pn.widgets.Checkbox(name="Sky subtraction", value=True)
@@ -318,7 +317,9 @@ def plot_2d_callback(event=None):
                             arm_name = ARM_NAMES.get(arm, arm)
 
                             # Check if it's a "not found" error (data doesn't exist)
-                            is_not_found = arm_error and "could not be found" in arm_error
+                            is_not_found = (
+                                arm_error and "could not be found" in arm_error
+                            )
 
                             if is_not_found:
                                 # More concise message for missing data
@@ -331,7 +332,9 @@ This arm/spectrograph combination does not have data for this visit.
 
 _Error: Dataset not found in collection_
 """
-                                logger.info(f"SM{spectro} {arm_name}: Data not available (expected for some configurations)")
+                                logger.info(
+                                    f"SM{spectro} {arm_name}: Data not available (expected for some configurations)"
+                                )
                             else:
                                 # Full error for other types of errors
                                 error_text = f"""
@@ -349,7 +352,11 @@ _Error: Dataset not found in collection_
                                 pn.pane.Markdown(
                                     error_text,
                                     sizing_mode="stretch_width",
-                                    styles={'background': '#f0f0f0', 'padding': '20px', 'border': '1px solid #ddd'}
+                                    styles={
+                                        "background": "#f0f0f0",
+                                        "padding": "20px",
+                                        "border": "1px solid #ddd",
+                                    },
                                 )
                             )
                 except Exception as e:
@@ -389,7 +396,9 @@ _Error: Dataset not found in collection_
                     "This visit may not have data for these configurations."
                 )
             else:
-                raise RuntimeError("No 2D plots were successfully created due to errors")
+                raise RuntimeError(
+                    "No 2D plots were successfully created due to errors"
+                )
 
         # Create tabbed layout for multiple spectrographs
         tab_items = []
@@ -497,9 +506,9 @@ fibers_mc.param.watch(on_fiber_change, "value")
 # --- Layout ---
 sidebar = pn.Column(
     # "## Instrument Settings",
-    "### Arm",
+    "#### Arm",
     arm_rbg,
-    "### Spectrograph",
+    "#### Spectrograph",
     spectro_cbg,
     #
     pn.layout.Divider(),  # hline
@@ -529,6 +538,10 @@ sidebar = pn.Column(
     #
     # "## Plot",
     pn.Row(btn_plot_2d, btn_plot_1d, btn_reset),
+    #
+    f"**Base collection:** {BASE_COLLECTION}<br>"
+    f"**Datastore:** {DATASTORE}<br>"
+    f"**Observation Date (UTC):** {OBSDATE_UTC}",
     #
     min_width=280,  # 最小幅
     max_width=400,  # 最大幅
