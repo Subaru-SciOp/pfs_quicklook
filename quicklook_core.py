@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-PFS QuickLook core (2D/1D only, no stacking)
-- Butler I/O
-- 2D sky-subtracted image (optional overlay)
-- 1D spectrum for selected fibers (single-visit)
-"""
 
 import os
 import sys
@@ -40,10 +34,7 @@ try:
 
     logger.info("LSST/PFS imports succeeded.")
 except Exception as _import_err:
-    Butler = None
-    SpectrumSet = None
-    subtractSky1d = None
-    logger.error("Warning: LSST/PFS imports failed:", _import_err)
+    logger.error(f"LSST/PFS imports failed: {_import_err}")
     raise _import_err
 
 
@@ -52,19 +43,43 @@ load_dotenv(verbose=True)
 
 DATASTORE = os.environ.get("PFS_DATASTORE", "/work/datastore")
 BASE_COLLECTION = os.environ.get("PFS_BASE_COLLECTION", "u/obsproc/s25a/20250520b")
-OBSDATE_UTC = os.environ.get("PFS_OBSDATE_UTC", None)
+OBSDATE_UTC = os.environ.get(
+    "PFS_OBSDATE_UTC", datetime.now(timezone.utc).strftime("%Y-%m-%d")
+)
 VISIT_REFRESH_INTERVAL = int(
     os.environ.get("PFS_VISIT_REFRESH_INTERVAL", "300")
 )  # seconds, 0 = disabled
 
+# Constants
+ARM_NAMES = {"b": "Blue", "r": "Red", "n": "NIR", "m": "Medium-Red"}
+
 
 # --- Config reload function ---
 def reload_config():
-    """Reload .env file and return updated configuration"""
+    """Reload .env file and return updated configuration
+
+    Returns
+    -------
+    datastore : str
+        Path to Butler datastore
+    base_collection : str
+        Base collection name
+    obsdate_utc : str
+        Observation date in UTC (YYYY-MM-DD format)
+    refresh_interval : int
+        Auto-refresh interval in seconds
+
+    Notes
+    -----
+    Called on each session start to allow runtime configuration changes
+    without restarting the application.
+    """
     load_dotenv(override=True, verbose=True)
     datastore = os.environ.get("PFS_DATASTORE", "/work/datastore")
     base_collection = os.environ.get("PFS_BASE_COLLECTION", "u/obsproc/s25a/20250520b")
-    obsdate_utc = os.environ.get("PFS_OBSDATE_UTC", None)
+    obsdate_utc = os.environ.get(
+        "PFS_OBSDATE_UTC", datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    )
     refresh_interval = int(os.environ.get("PFS_VISIT_REFRESH_INTERVAL", "300"))
     logger.info(
         f"Config reloaded - DATASTORE: {datastore}, BASE_COLLECTION: {base_collection}, "
@@ -74,34 +89,65 @@ def reload_config():
 
 
 # --- Helpers ---
-def collections_for_visit(base_collection: str, visit: int):
-    """Return sub-collection for each visit"""
-    return [os.path.join(base_collection, f"{visit}")]
-
-
-def get_current_obsdate():
-    """
-    Get the current observation date (UTC) for filtering visits.
-    Returns the value from OBSDATE_UTC if set, otherwise returns today's UTC date.
-
-    Note: Uses datetime.now(timezone.utc) instead of deprecated datetime.utcnow()
-    """
-    if OBSDATE_UTC:
-        return OBSDATE_UTC
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
-
-
 def make_data_id(visit: int, spectrograph: int, arm: str):
-    """Butler dataId"""
+    """Create Butler dataId dictionary
+
+    Parameters
+    ----------
+    visit : int
+        Visit number
+    spectrograph : int
+        Spectrograph number (1-4)
+    arm : str
+        Arm name ('b', 'r', 'n', or 'm')
+
+    Returns
+    -------
+    dict
+        Butler dataId with keys: visit, spectrograph, arm
+    """
     return dict(visit=visit, spectrograph=spectrograph, arm=arm)
 
 
+def get_transform(scale_algo: str):
+    """Get astropy transform based on scaling algorithm
+
+    Parameters
+    ----------
+    scale_algo : str
+        Scaling algorithm: 'zscale' or 'minmax'
+
+    Returns
+    -------
+    astropy transform
+        Combined stretch and interval transform
+    """
+    return (
+        LuptonAsinhStretch(Q=1) + ZScaleInterval()
+        if scale_algo == "zscale"
+        else AsinhStretch(a=1) + MinMaxInterval()
+    )
+
+
 def get_butler(datastore: str, base_collection: str, visit: int) -> "Butler":
-    """Return a Butler for the collection of the specified visit"""
-    if Butler is None:
-        raise RuntimeError("Butler is not available. Check LSST/PFS environment setup.")
-    cols = collections_for_visit(base_collection, visit)
-    return Butler(datastore, collections=cols, writeable=False)
+    """Return a Butler for the collection of the specified visit
+
+    Parameters
+    ----------
+    datastore : str
+        Path to Butler datastore
+    base_collection : str
+        Base collection name
+    visit : int
+        Visit number
+
+    Returns
+    -------
+    Butler
+        Butler instance for the specified visit collection
+    """
+    collection = os.path.join(base_collection, str(visit))
+    return Butler(datastore, collections=[collection], writeable=False)
 
 
 def discover_visits(
@@ -117,18 +163,15 @@ def discover_visits(
     base_collection : str
         Base collection name (e.g., "u/obsproc/s25a/20250520b")
     obsdate_utc : str, optional
-        Observation date in "YYYY-MM-DD" format. If None, uses get_current_obsdate()
+        Observation date in "YYYY-MM-DD" format. If None, uses current UTC date.
 
     Returns
     -------
     list of int
         Sorted list of available visit numbers
     """
-    if Butler is None:
-        raise RuntimeError("Butler is not available. Check LSST/PFS environment setup.")
-
     if obsdate_utc is None:
-        obsdate_utc = get_current_obsdate()
+        obsdate_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     logger.info(f"Discovering visits for date: {obsdate_utc}")
 
@@ -146,15 +189,7 @@ def discover_visits(
         # Extract visit numbers and convert to integers
         visits = [int(coll.split("/")[-1]) for coll in collections]
 
-        # If obsdate_utc is not specified or empty, return all visits
-        if not obsdate_utc:
-            visit_list = sorted(visits)
-            logger.info(
-                f"Found {len(visit_list)} visits under {base_collection} (no date filter)"
-            )
-            return visit_list
-
-        # Filter by observation date if specified using parallel processing
+        # Filter by observation date using parallel processing
         def check_visit_date(visit):
             """Check if visit matches the observation date"""
             try:
@@ -195,14 +230,25 @@ def discover_visits(
 
 
 def load_visit_data(datastore: str, base_collection: str, visit: int):
-    """
-    Load visit data and create bidirectional mapping between OB Code and Fiber ID.
+    """Load visit data and create bidirectional mapping between OB Code and Fiber ID
 
-    Returns:
-        tuple: (pfsConfig, obcode_to_fibers_dict, fiber_to_obcode_dict)
-            - pfsConfig: PfsConfig object
-            - obcode_to_fibers_dict: dict mapping OB codes to lists of fiber IDs
-            - fiber_to_obcode_dict: dict mapping fiber IDs to OB codes
+    Parameters
+    ----------
+    datastore : str
+        Path to Butler datastore
+    base_collection : str
+        Base collection name
+    visit : int
+        Visit number
+
+    Returns
+    -------
+    pfsConfig : PfsConfig
+        PFS configuration object
+    obcode_to_fibers_dict : dict
+        Mapping from OB codes to lists of fiber IDs
+    fiber_to_obcode_dict : dict
+        Mapping from fiber IDs to OB codes
     """
     b = get_butler(datastore, base_collection, visit)
     pfsConfig = b.get("pfsConfig", visit=visit)
@@ -247,19 +293,43 @@ def _build_single_2d_array(
     fiber_ids=None,
     scale_algo: str = "zscale",
 ):
-    """
-    Build transformed numpy array for a single arm/spectrograph combination.
-    This is a helper function for parallel processing.
+    """Build transformed numpy array for a single arm/spectrograph combination
 
-    Returns only pickle-able objects (numpy arrays, not HoloViews objects).
+    Helper function for parallel processing. Returns only pickle-able objects
+    (numpy arrays, not HoloViews objects).
+
+    Parameters
+    ----------
+    datastore : str
+        Path to Butler datastore
+    base_collection : str
+        Base collection name
+    visit : int
+        Visit number
+    spectrograph : int
+        Spectrograph number (1-4)
+    arm : str
+        Arm name ('b', 'r', 'n', or 'm')
+    subtract_sky : bool, optional
+        Whether to subtract sky background. Default is True.
+    overlay : bool, optional
+        Whether to overlay detector map (not implemented). Default is False.
+    fiber_ids : list of int, optional
+        Fiber IDs for overlay (not implemented). Default is None.
+    scale_algo : str, optional
+        Scaling algorithm ('zscale' or 'minmax'). Default is 'zscale'.
 
     Returns
     -------
-    tuple
-        (arm, transformed_array, metadata_dict, error_msg) where error_msg is None on success
+    arm : str
+        Arm name
+    transformed_array : numpy.ndarray or None
+        Transformed 2D array, or None on error
+    metadata_dict : dict
+        Metadata with width, height, bounds
+    error_msg : str or None
+        Error message if failed, None on success
     """
-    ARM_NAMES = {"b": "Blue", "r": "Red", "n": "NIR", "m": "Medium-Red"}
-
     try:
         b = get_butler(datastore, base_collection, visit)
         data_id = make_data_id(visit, spectrograph, arm)
@@ -293,11 +363,7 @@ def _build_single_2d_array(
         image_array = exp.image.array.astype(np.float64)
 
         # Apply astropy transform
-        if scale_algo == "zscale":
-            transform = LuptonAsinhStretch(Q=1) + ZScaleInterval()
-        else:
-            transform = AsinhStretch(a=1) + MinMaxInterval()
-
+        transform = get_transform(scale_algo)
         transformed_array = transform(image_array)
 
         logger.info(
@@ -452,25 +518,17 @@ def create_holoviews_from_arrays(array_results, spectrograph):
 
                 # Configure display options to match matplotlib appearance
                 # Note: Using Image directly without rasterize for proper hover functionality
-                # Calculate aspect ratio from actual data dimensions
+                # Calculate aspect ratio and plot dimensions
+                BASE_SIZE = 512
                 aspect_ratio = width / height
-                logger.info(
-                    f"Image aspect ratio for {arm}: {aspect_ratio:.3f} (width={width}, height={height})"
+                plot_width, plot_height = (
+                    (BASE_SIZE, int(BASE_SIZE / aspect_ratio))
+                    if aspect_ratio >= 1.0
+                    else (int(BASE_SIZE * aspect_ratio), BASE_SIZE)
                 )
-
-                # Set frame dimensions to maintain aspect ratio
-                # For landscape images (width > height), fix width and adjust height
-                # For portrait images (height > width), fix height and adjust width
-                if aspect_ratio >= 1.0:
-                    # Landscape or square: fix width
-                    plot_width = 512
-                    plot_height = int(512 / aspect_ratio)
-                else:
-                    # Portrait: fix height
-                    plot_height = 512
-                    plot_width = int(512 * aspect_ratio)
-
-                logger.info(f"Plot dimensions for {arm}: {plot_width}x{plot_height}")
+                logger.debug(
+                    f"{arm}: aspect={aspect_ratio:.3f}, plot={plot_width}x{plot_height}"
+                )
 
                 img.opts(
                     cmap="cividis",
@@ -572,9 +630,28 @@ def build_1d_bokeh_figure_single_visit(
     fiber_ids,
     ylim=(-5000, 10000),
 ):
-    """
-    指定 visit の選択ファイバー 1D スペクトルを Bokeh で重ね描きする。
-    Returns a Bokeh figure object.
+    """Build interactive Bokeh plot for 1D spectra of selected fibers
+
+    Creates multi-fiber overlay plot with error bands, interactive legend,
+    and hover tooltips showing fiber metadata.
+
+    Parameters
+    ----------
+    datastore : str
+        Path to Butler datastore
+    base_collection : str
+        Base collection name
+    visit : int
+        Visit number
+    fiber_ids : list of int
+        Fiber IDs to display
+    ylim : tuple of float, optional
+        Y-axis limits as (ymin, ymax). Default is (-5000, 10000).
+
+    Returns
+    -------
+    bokeh.plotting.figure
+        Bokeh figure object with configured plot
     """
     from bokeh.models import Band, ColumnDataSource
     from bokeh.palettes import Category10_10
@@ -811,12 +888,7 @@ def build_1d_spectra_as_image(
 
         # Apply scaling transformation - exactly like existing 2D code
         flux_array_float = flux_array.astype(np.float64)
-
-        if scale_algo == "zscale":
-            transform = LuptonAsinhStretch(Q=1) + ZScaleInterval()
-        else:
-            transform = AsinhStretch(a=1) + MinMaxInterval()
-
+        transform = get_transform(scale_algo)
         transformed_array = transform(flux_array_float)
 
         logger.info(
