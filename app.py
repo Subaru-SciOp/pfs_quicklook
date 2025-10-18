@@ -1,13 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-PFS QuickLook Panel App (2D/1D)
-- Sidebar: visit / arm / spectrograph / fibers / options
-- Tabs: 2D / 1D / Log
-- Run/Reset/Export(PNG)
-"""
 
-import sys
 import threading
 
 import numpy as np
@@ -16,26 +9,20 @@ from joblib import Parallel, delayed
 from loguru import logger
 
 from quicklook_core import (
+    ARM_NAMES,
     BASE_COLLECTION,
     DATASTORE,
     OBSDATE_UTC,
-    VISIT_REFRESH_INTERVAL,
     build_1d_bokeh_figure_single_visit,
     build_1d_spectra_as_image,
     build_2d_arrays_multi_arm,
     create_holoviews_from_arrays,
     discover_visits,
-    get_current_obsdate,
     load_visit_data,
     reload_config,
 )
 
 pn.extension(notifications=True)
-
-
-# Configure logger with INFO level
-logger.remove()  # Remove default handler
-logger.add(sys.stdout, level="INFO")
 
 
 # --- Session State Management ---
@@ -65,24 +52,37 @@ def get_session_state():
                 "fiber_to_obcode": {},
             },
             "programmatic_update": False,
-            "visit_discovery": {
-                "status": None,
-                "result": None,
-                "error": None,
-            },
+            "visit_discovery": {"status": None, "result": None, "error": None},
         }
 
     return ctx.app_state
 
 
+def should_skip_update(state):
+    """Check if widget update should be skipped
+
+    Returns True if either:
+    - Update is programmatic (to prevent circular updates)
+    - Visit data is not loaded yet
+
+    Parameters
+    ----------
+    state : dict
+        Session state dictionary
+
+    Returns
+    -------
+    bool
+        True if update should be skipped
+    """
+    return state["programmatic_update"] or not state["visit_data"]["loaded"]
+
+
 # --- Widgets ---
-# Arm selection widget removed - always attempt to load all 4 arms (b, r, n, m)
-# Display order will be brn or bmn depending on which arms have data
 spectro_cbg = pn.widgets.CheckButtonGroup(
     name="Spectrograph",
     options=[1, 2, 3, 4],
     value=[1, 2, 3, 4],
-    # button_type="primary",
     button_type="default",
     button_style="outline",
     sizing_mode="stretch_width",
@@ -115,12 +115,7 @@ scale_sel = pn.widgets.Select(
     name="Scale", options=["zscale", "minmax"], value="zscale"
 )
 
-btn_load_data = pn.widgets.Button(
-    name="Load Data",
-    button_type="primary",
-    # icon="reload",
-    # icon_size="18px",
-)
+btn_load_data = pn.widgets.Button(name="Load Data", button_type="primary")
 btn_plot_2d = pn.widgets.Button(
     name="Show 2D Images",
     button_type="primary",
@@ -144,11 +139,8 @@ btn_reset = pn.widgets.Button(name="Reset", sizing_mode="stretch_width")
 status_text = pn.pane.Markdown("**Ready**", sizing_mode="stretch_width", height=60)
 
 # --- Output panes ---
-# pane_2d can hold either a Matplotlib pane or a Tabs object (for multiple spectrographs)
 pane_2d = pn.Column(sizing_mode="scale_width")
-# pane_1d holds Bokeh figures
 pane_1d = pn.Column(height=550, sizing_mode="scale_width")
-# pane_1d_image holds HoloViews image of all 1D spectra
 pane_1d_image = pn.Column(sizing_mode="scale_width")
 log_md = pn.pane.Markdown("**Ready.**")
 
@@ -163,9 +155,12 @@ tabs = pn.Tabs(
 def toggle_buttons(disabled=True, include_load=False):
     """Enable or disable all action buttons
 
-    Args:
-        disabled: If True, disable buttons. If False, enable buttons.
-        include_load: If True, also toggle the Load Data button.
+    Parameters
+    ----------
+    disabled : bool, optional
+        If True, disable buttons. If False, enable buttons. Default is True.
+    include_load : bool, optional
+        If True, also toggle the Load Data button. Default is False.
     """
     if include_load:
         btn_load_data.disabled = disabled
@@ -177,13 +172,28 @@ def toggle_buttons(disabled=True, include_load=False):
 
 # --- Callbacks ---
 def load_data_callback(event=None):
-    """Load visit data and update OB Code options"""
+    """Load visit data and update OB Code options
+
+    Loads pfsConfig for the selected visit, creates bidirectional
+    mappings between OB codes and fiber IDs, and populates the
+    OB Code widget options.
+
+    Parameters
+    ----------
+    event : panel.io.state.Event, optional
+        Panel button click event (unused)
+
+    Notes
+    -----
+    Updates session state with loaded data and enables plot buttons.
+    Shows notifications on success or failure.
+    """
     if not visit_mc.value:
         pn.state.notifications.warning("Select at least one visit.")
         logger.warning("No visit selected.")
         return
 
-    visit = list(visit_mc.value)[0]
+    visit = visit_mc.value[0]
 
     # Disable all buttons during loading
     toggle_buttons(disabled=True, include_load=True)
@@ -245,13 +255,23 @@ def load_data_callback(event=None):
 
 
 def on_obcode_change(event):
-    """Update Fiber ID selection based on OB Code selection"""
+    """Update Fiber ID selection based on OB Code selection
+
+    Callback for OB Code widget value changes. Automatically selects
+    all fiber IDs associated with the selected OB codes.
+
+    Parameters
+    ----------
+    event : panel.io.state.Event
+        Panel widget value change event
+
+    Notes
+    -----
+    Implements bidirectional synchronization between OB Code and Fiber ID.
+    Skips update if programmatic or data not loaded.
+    """
     state = get_session_state()
-
-    if state["programmatic_update"]:
-        return
-
-    if not state["visit_data"]["loaded"]:
+    if should_skip_update(state):
         return
 
     selected_obcodes = obcode_mc.value
@@ -275,13 +295,23 @@ def on_obcode_change(event):
 
 
 def on_fiber_change(event):
-    """Update OB Code selection based on Fiber ID selection"""
+    """Update OB Code selection based on Fiber ID selection
+
+    Callback for Fiber ID widget value changes. Automatically selects
+    all OB codes associated with the selected fiber IDs.
+
+    Parameters
+    ----------
+    event : panel.io.state.Event
+        Panel widget value change event
+
+    Notes
+    -----
+    Implements bidirectional synchronization between Fiber ID and OB Code.
+    Skips update if programmatic or data not loaded.
+    """
     state = get_session_state()
-
-    if state["programmatic_update"]:
-        return
-
-    if not state["visit_data"]["loaded"]:
+    if should_skip_update(state):
         return
 
     selected_fibers = fibers_mc.value
@@ -305,7 +335,23 @@ def on_fiber_change(event):
 
 
 def plot_2d_callback(event=None):
-    """Create 2D plot with support for multiple arms and spectrographs"""
+    """Create 2D plot with support for multiple arms and spectrographs
+
+    Creates interactive HoloViews 2D spectral images for all selected
+    spectrographs and arms. Automatically attempts to load all 4 arms
+    (b, r, n, m) and displays them in appropriate layout.
+
+    Parameters
+    ----------
+    event : panel.io.state.Event, optional
+        Panel button click event (unused)
+
+    Notes
+    -----
+    Uses parallel processing for multiple spectrographs/arms.
+    Automatically switches to 2D tab after successful plot creation.
+    Shows informational notes for missing arms and errors.
+    """
     state = get_session_state()
 
     if not state["visit_data"]["loaded"]:
@@ -323,7 +369,7 @@ def plot_2d_callback(event=None):
     )
     # Always attempt to load all 4 arms
     all_arms = ["b", "r", "n", "m"]
-    fibers = list(fibers_mc.value) if fibers_mc.value else None
+    fibers = fibers_mc.value if fibers_mc.value else None
 
     subtract_sky = subtract_sky_chk.value
     overlay = overlay_chk.value
@@ -333,7 +379,6 @@ def plot_2d_callback(event=None):
         pn.state.notifications.warning("DetectorMap overlay is not supported yet.")
 
     try:
-        n_total = len(spectros) * len(all_arms)
         status_text.object = "**Checking data availability and creating 2D plots...**"
         logger.info(
             f"Attempting to load all {len(all_arms)} arms for {len(spectros)} spectrographs"
@@ -342,7 +387,6 @@ def plot_2d_callback(event=None):
         # Process spectrographs in parallel (only array generation)
         # Two-level parallelization: spectrographs in parallel, arms within each spectrograph in parallel
         spectrograph_panels = {}
-        ARM_NAMES = {"b": "Blue", "r": "Red", "n": "NIR", "m": "Medium-Red"}
 
         def build_arrays_for_spectrograph(spectro):
             """Build arrays for a single spectrograph (pickle-able)"""
@@ -545,7 +589,22 @@ def plot_2d_callback(event=None):
 
 
 def plot_1d_callback(event=None):
-    """Create 1D plot using Bokeh"""
+    """Create 1D plot using Bokeh
+
+    Creates interactive Bokeh plot showing 1D spectra for selected fibers.
+    Displays multiple fibers with error bands, interactive legend, and
+    hover tooltips.
+
+    Parameters
+    ----------
+    event : panel.io.state.Event, optional
+        Panel button click event (unused)
+
+    Notes
+    -----
+    Requires fiber selection (shows warning if none selected).
+    Automatically switches to 1D tab after successful plot creation.
+    """
     state = get_session_state()
 
     if not state["visit_data"]["loaded"]:
@@ -561,7 +620,7 @@ def plot_1d_callback(event=None):
     toggle_buttons(disabled=True, include_load=True)
 
     visit = state["visit_data"]["visit"]
-    fibers = list(fibers_mc.value)
+    fibers = fibers_mc.value
 
     try:
         status_text.object = "**Creating 1D plot...**"
@@ -597,7 +656,21 @@ def plot_1d_callback(event=None):
 
 
 def plot_1d_image_callback(event=None):
-    """Create 2D representation of all 1D spectra"""
+    """Create 2D representation of all 1D spectra
+
+    Creates a 2D image where each row represents one fiber's 1D spectrum.
+    Uses HoloViews for interactive visualization with zoom and pan.
+
+    Parameters
+    ----------
+    event : panel.io.state.Event, optional
+        Panel button click event (unused)
+
+    Notes
+    -----
+    Displays all fibers if none selected.
+    Automatically switches to 1D Image tab after successful creation.
+    """
     state = get_session_state()
 
     if not state["visit_data"]["loaded"]:
@@ -608,7 +681,7 @@ def plot_1d_image_callback(event=None):
     toggle_buttons(disabled=True, include_load=True)
 
     visit = state["visit_data"]["visit"]
-    fibers = list(fibers_mc.value) if fibers_mc.value else None
+    fibers = fibers_mc.value if fibers_mc.value else None
     scale_algo = scale_sel.value
 
     try:
@@ -650,7 +723,21 @@ def plot_1d_image_callback(event=None):
 
 
 def reset_app(event=None):
-    """Reset application state"""
+    """Reset application state
+
+    Clears all plots, session state, and widget selections.
+    Returns application to initial ready state.
+
+    Parameters
+    ----------
+    event : panel.io.state.Event, optional
+        Panel button click event (unused)
+
+    Notes
+    -----
+    Disables plot buttons and re-enables Load Data button.
+    Clears OB Code options and all selections.
+    """
     pane_2d.clear()
     pane_1d.clear()  # Clear Column instead of setting object to None
     pane_1d_image.clear()
@@ -683,7 +770,13 @@ def reset_app(event=None):
 
 # --- Asynchronous visit discovery ---
 def get_visit_discovery_state():
-    """Get or create visit discovery state for current session"""
+    """Get or create visit discovery state for current session
+
+    Returns
+    -------
+    dict
+        Visit discovery state with keys: 'status', 'result', 'error'
+    """
     state = get_session_state()
     return state["visit_discovery"]
 
@@ -691,13 +784,13 @@ def get_visit_discovery_state():
 def discover_visits_worker(state_dict):
     """Worker function that runs in background thread
 
-    Args:
-        state_dict: Dictionary reference to store results (passed from main thread)
+    Parameters
+    ----------
+    state_dict : dict
+        Dictionary reference to store results (passed from main thread)
     """
     try:
-        logger.info(
-            f"Starting visit discovery for date: {OBSDATE_UTC or get_current_obsdate()}"
-        )
+        logger.info(f"Starting visit discovery for date: {OBSDATE_UTC}")
         state_dict["status"] = "running"
 
         # Discover visits (this is the slow part)
@@ -723,7 +816,16 @@ def discover_visits_worker(state_dict):
 
 
 def check_visit_discovery():
-    """Check if background visit discovery is complete and update widget"""
+    """Check if background visit discovery is complete and update widget
+
+    Periodic callback that checks visit discovery status and updates
+    the visit MultiChoice widget when complete.
+
+    Returns
+    -------
+    bool
+        True to continue periodic checking, False to stop
+    """
     state = get_visit_discovery_state()
     status = state.get("status")
 
@@ -784,7 +886,15 @@ def check_visit_discovery():
 
 
 def trigger_visit_refresh():
-    """Trigger a background visit refresh (called periodically if auto-refresh enabled)"""
+    """Trigger a background visit refresh
+
+    Called periodically if auto-refresh is enabled. Starts background
+    thread and periodic callback to update visit list.
+
+    Notes
+    -----
+    Only runs if no discovery is already in progress.
+    """
     state = get_visit_discovery_state()
 
     if state.get("status") != "running":
@@ -801,7 +911,15 @@ def trigger_visit_refresh():
 
 # --- Session initialization ---
 def on_session_created():
-    """Called when a new browser session starts (page load/reload)"""
+    """Called when a new browser session starts (page load/reload)
+
+    Reloads configuration from .env file, initializes session state,
+    and starts background visit discovery. Sets up auto-refresh if enabled.
+
+    Notes
+    -----
+    Registered via pn.state.onload() to run on each session start.
+    """
     datastore, base_collection, obsdate_utc, refresh_interval = reload_config()
     logger.info(
         f"Session started with DATASTORE={datastore}, BASE_COLLECTION={base_collection}, "
@@ -858,39 +976,23 @@ fibers_mc.param.watch(on_fiber_change, "value")
 
 # --- Layout ---
 sidebar = pn.Column(
-    # "## Instrument Settings",
-    # Arm selection removed - always attempt to load all 4 arms
     "#### Spectrograph",
     spectro_cbg,
-    #
-    pn.layout.Divider(),  # hline
-    #
-    # "## Data Selection",
-    # "### Visit",
+    pn.layout.Divider(),
     visit_mc,
     btn_load_data,
     status_text,
-    #
-    pn.layout.Divider(),  # hline
-    #
-    # "## Fiber Selection",
-    # "### OB Code",
+    pn.layout.Divider(),
     obcode_mc,
-    # "### Fiber ID",
     fibers_mc,
-    #
-    pn.layout.Divider(),  # hline
-    #
-    # "## Plot",
+    pn.layout.Divider(),
     pn.Column(btn_plot_2d, btn_plot_1d_image, btn_plot_1d, btn_reset),
-    #
     f"**Base collection:** {BASE_COLLECTION}<br>"
     f"**Datastore:** {DATASTORE}<br>"
     f"**Observation Date (UTC):** {OBSDATE_UTC}",
-    #
-    min_width=280,  # 最小幅
-    max_width=400,  # 最大幅
-    sizing_mode="stretch_width",  # レスポンシブ
+    min_width=280,
+    max_width=400,
+    sizing_mode="stretch_width",
 )
 
 main = pn.Column(tabs, sizing_mode="stretch_both")
@@ -899,6 +1001,5 @@ pn.template.FastListTemplate(
     title="PFS Quick Look",
     sidebar=[sidebar],
     main=[main],
-    # header_background="#0B3D91",
-    sidebar_width=320,  # 1920px幅の画面でサイドバー固定
+    sidebar_width=320,
 ).servable()
