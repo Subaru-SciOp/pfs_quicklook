@@ -31,8 +31,6 @@ from quicklook_core import (
 )
 
 pn.extension(notifications=True)
-pn.config.loading_spinner = "petal"
-pn.config.loading_color = "gray"
 
 
 # Configure logger with INFO level
