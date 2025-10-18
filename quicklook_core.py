@@ -53,7 +53,9 @@ load_dotenv(verbose=True)
 DATASTORE = os.environ.get("PFS_DATASTORE", "/work/datastore")
 BASE_COLLECTION = os.environ.get("PFS_BASE_COLLECTION", "u/obsproc/s25a/20250520b")
 OBSDATE_UTC = os.environ.get("PFS_OBSDATE_UTC", None)
-VISIT_REFRESH_INTERVAL = int(os.environ.get("PFS_VISIT_REFRESH_INTERVAL", "300"))  # seconds, 0 = disabled
+VISIT_REFRESH_INTERVAL = int(
+    os.environ.get("PFS_VISIT_REFRESH_INTERVAL", "300")
+)  # seconds, 0 = disabled
 
 
 # --- Config reload function ---
@@ -147,7 +149,9 @@ def discover_visits(
         # If obsdate_utc is not specified or empty, return all visits
         if not obsdate_utc:
             visit_list = sorted(visits)
-            logger.info(f"Found {len(visit_list)} visits under {base_collection} (no date filter)")
+            logger.info(
+                f"Found {len(visit_list)} visits under {base_collection} (no date filter)"
+            )
             return visit_list
 
         # Filter by observation date if specified using parallel processing
@@ -167,9 +171,9 @@ def discover_visits(
                 logger.warning(f"Failed to check visit {visit}: {e}")
                 return None
 
-        # Parallel processing with max 16 cores
+        # Parallel processing with max 32 cores
         logger.info(f"Filtering visits by observation date: {obsdate_utc}")
-        results = Parallel(n_jobs=min(16, len(visits)), verbose=1)(
+        results = Parallel(n_jobs=min(32, len(visits)), verbose=1)(
             delayed(check_visit_date)(visit) for visit in visits
         )
 
@@ -765,7 +769,9 @@ def build_1d_spectra_as_image(
 
         logger.info(f"Creating 1D spectra image for {n_fibers} fibers")
         logger.info(f"Flux array shape: {flux_array.shape}")
-        logger.info(f"Flux range (raw): [{flux_array.min():.2f}, {flux_array.max():.2f}]")
+        logger.info(
+            f"Flux range (raw): [{flux_array.min():.2f}, {flux_array.max():.2f}]"
+        )
 
         # Get wavelength range from the middle fiber (similar to showAllSpectraAsImage)
         ibar = n_fibers // 2
@@ -777,21 +783,31 @@ def build_1d_spectra_as_image(
         fid_min = fiber_id_array.min()
         fid_max = fiber_id_array.max()
         n_expected = fid_max - fid_min + 1
-        is_continuous = (n_fibers == n_expected)
-        logger.info(f"FiberId range: {fid_min} - {fid_max} (n={n_fibers}, expected={n_expected}, continuous={is_continuous})")
+        is_continuous = n_fibers == n_expected
+        logger.info(
+            f"FiberId range: {fid_min} - {fid_max} (n={n_fibers}, expected={n_expected}, continuous={is_continuous})"
+        )
 
         # Sample some fiberIds to check for gaps
         if n_fibers >= 10:
-            logger.info(f"Sample fiberIds: {fiber_id_array[:5].tolist()} ... {fiber_id_array[-5:].tolist()}")
+            logger.info(
+                f"Sample fiberIds: {fiber_id_array[:5].tolist()} ... {fiber_id_array[-5:].tolist()}"
+            )
 
         # Calculate pixel size for proper centering
         # Wavelength: assuming uniform spacing
-        wavelength_step = (lam1 - lam0) / (n_wavelength - 1) if n_wavelength > 1 else 1.0
+        wavelength_step = (
+            (lam1 - lam0) / (n_wavelength - 1) if n_wavelength > 1 else 1.0
+        )
         # FiberId: spacing is 1 (consecutive integers)
         fid_step = 1.0
 
-        logger.info(f"Creating full resolution image: {n_fibers} fibers × {n_wavelength} wavelengths = {n_fibers * n_wavelength} pixels")
-        logger.info(f"Pixel sizes: wavelength_step={wavelength_step:.3f} nm, fiberId_step={fid_step}")
+        logger.info(
+            f"Creating full resolution image: {n_fibers} fibers × {n_wavelength} wavelengths = {n_fibers * n_wavelength} pixels"
+        )
+        logger.info(
+            f"Pixel sizes: wavelength_step={wavelength_step:.3f} nm, fiberId_step={fid_step}"
+        )
 
         # Apply scaling transformation - exactly like existing 2D code
         flux_array_float = flux_array.astype(np.float64)
@@ -844,7 +860,9 @@ def build_1d_spectra_as_image(
         plot_width = 1000  # Reduced from 1400 for better layout
         plot_height = max(200, min(500, int(n_fibers * 0.25)))
 
-        logger.info(f"Created image: {n_fibers} fibers × {n_wavelength} wavelengths, plot size {plot_width}x{plot_height}")
+        logger.info(
+            f"Created image: {n_fibers} fibers × {n_wavelength} wavelengths, plot size {plot_width}x{plot_height}"
+        )
 
         # Get vmin/vmax for color scaling
         vmin = transformed_array.min()
@@ -855,7 +873,10 @@ def build_1d_spectra_as_image(
             tooltips=[
                 ("Wavelength", "$x{0.1f} nm"),
                 ("Fiber Index", "$y{int}"),  # 0-based fiber index
-                ("Fiber ID", "@fiberId{int}"),  # Actual fiberId from lookup array (integer)
+                (
+                    "Fiber ID",
+                    "@fiberId{int}",
+                ),  # Actual fiberId from lookup array (integer)
                 ("Intensity", "@intensity{0.2f}"),  # Use @intensity instead of @image
             ]
         )
@@ -898,6 +919,7 @@ def build_1d_spectra_as_image(
         error_msg = str(e)
         logger.error(f"Failed to create 1D spectra image: {error_msg}")
         import traceback
+
         logger.error(f"Traceback: {traceback.format_exc()}")
 
         # Create simple error placeholder

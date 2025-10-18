@@ -31,6 +31,8 @@ from quicklook_core import (
 )
 
 pn.extension(notifications=True)
+pn.config.loading_spinner = "petal"
+pn.config.loading_color = "gray"
 
 
 # Configure logger with INFO level
@@ -541,7 +543,7 @@ def plot_2d_callback(event=None):
         status_text.object = "**Error creating 2D plot**"
     finally:
         # Re-enable buttons after processing
-        toggle_buttons(disabled=False, include_load=False)
+        toggle_buttons(disabled=False, include_load=True)
 
 
 def plot_1d_callback(event=None):
@@ -593,7 +595,7 @@ def plot_1d_callback(event=None):
         status_text.object = "**Error creating 1D plot**"
     finally:
         # Re-enable buttons after processing
-        toggle_buttons(disabled=False, include_load=False)
+        toggle_buttons(disabled=False, include_load=True)
 
 
 def plot_1d_image_callback(event=None):
@@ -646,7 +648,7 @@ def plot_1d_image_callback(event=None):
         status_text.object = "**Error creating 1D spectra image**"
     finally:
         # Re-enable buttons after processing
-        toggle_buttons(disabled=False, include_load=False)
+        toggle_buttons(disabled=False, include_load=True)
 
 
 def reset_app(event=None):
@@ -675,6 +677,7 @@ def reset_app(event=None):
     btn_reset.disabled = False
 
     # Clear OB Code and Fiber ID selections
+    visit_mc.value = []
     obcode_mc.options = []
     obcode_mc.value = []
     fibers_mc.value = []
