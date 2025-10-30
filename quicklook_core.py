@@ -437,6 +437,7 @@ def _build_single_2d_array(
             "width": width,
             "height": height,
             "spectrograph": spectrograph,
+            "raw_array": image_array,  # Store original raw array for hover tooltips
         }
 
         return (arm, transformed_array, metadata, None)
@@ -537,40 +538,30 @@ def create_holoviews_from_arrays(array_results, spectrograph):
                     f"Image dimensions for {arm}: array shape={transformed_array.shape}, width={width}, height={height}"
                 )
 
-                # Flip array vertically so (0,0) is at lower-left corner (astronomical convention)
-                # HoloViews by default has (0,0) at upper-left, so we flip the array
+                # Flip arrays vertically so (0,0) is at lower-left corner (astronomical convention)
+                # HoloViews by default has (0,0) at upper-left, so we flip the arrays
                 flipped_array = np.flipud(transformed_array)
+
+                # Also flip the raw array for hover tooltips
+                raw_array = metadata.get('raw_array')
+                flipped_raw = np.flipud(raw_array)
+
+                # Stack arrays for multiple vdims: [scaled for display, raw for hover]
+                combined_data = np.stack([flipped_array, flipped_raw], axis=-1)
 
                 # Set bounds: (left, bottom, right, top)
                 # With flipped array, (0,0) will be at lower-left
                 # IMPORTANT: bounds should match the actual data dimensions
                 img = hv.Image(
-                    flipped_array,
+                    combined_data,
                     bounds=(0, 0, width, height),
                     kdims=["x", "y"],
-                    vdims=["intensity"],
+                    vdims=["intensity", "raw_value"],  # First vdim for display, second for hover
                 )
 
                 # Astropy transform already applied, use full range (0-100%) with linear scaling
                 vmin = transformed_array.min()
                 vmax = transformed_array.max()
-
-                # Create custom HoverTool with formatted coordinates
-                from bokeh.models import HoverTool
-
-                hover = HoverTool(
-                    tooltips=[
-                        (
-                            "X",
-                            "$x{0.0}",
-                        ),  # Use $x for cursor position, not @x (data column)
-                        ("Y", "$y{0.0}"),  # Use $y for cursor position
-                        (
-                            "Intensity",
-                            "@image{0.2f}",
-                        ),  # Use @image for pixel value in Image glyph
-                    ]
-                )
 
                 # Configure display options to match matplotlib appearance
                 # Note: Using Image directly without rasterize for proper hover functionality
@@ -589,9 +580,8 @@ def create_holoviews_from_arrays(array_results, spectrograph):
                 img.opts(
                     cmap="cividis",
                     clim=(vmin, vmax),  # Linear scaling of full range
-                    colorbar=True,
+                    colorbar=False,  # Hide colorbar (scaled values not meaningful for users)
                     tools=[
-                        hover,
                         "box_zoom",
                         "wheel_zoom",
                         "pan",
@@ -602,6 +592,11 @@ def create_holoviews_from_arrays(array_results, spectrograph):
                     ],
                     active_tools=["box_zoom"],
                     default_tools=[],  # Disable default tools to prevent duplicate tooltips
+                    hover_tooltips=[
+                        ("X", "$x{0.0}"),  # Cursor position X
+                        ("Y", "$y{0.0}"),  # Cursor position Y
+                        ("Raw Value", "@raw_value{0.2f}"),  # Original pixel value from raw_array
+                    ],
                     frame_width=plot_width,
                     frame_height=plot_height,
                     data_aspect=1.0,  # 1:1 pixel aspect ratio
