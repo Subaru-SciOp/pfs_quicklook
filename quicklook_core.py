@@ -151,7 +151,10 @@ def get_butler(datastore: str, base_collection: str, visit: int) -> "Butler":
 
 
 def discover_visits(
-    datastore: str, base_collection: str, obsdate_utc: str | None = None
+    datastore: str,
+    base_collection: str,
+    obsdate_utc: str | None = None,
+    cached_visits: dict | None = None,
 ):
     """
     Discover available visits from the Butler datastore for a given observation date.
@@ -164,16 +167,26 @@ def discover_visits(
         Base collection name (e.g., "u/obsproc/s25a/20250520b")
     obsdate_utc : str, optional
         Observation date in "YYYY-MM-DD" format. If None, uses current UTC date.
+    cached_visits : dict, optional
+        Dictionary of {visit_id: obsdate_utc} for previously validated visits.
+        If provided, only new visits will be checked against the date filter.
 
     Returns
     -------
     list of int
         Sorted list of available visit numbers
+    dict
+        Updated cache dictionary with {visit_id: obsdate_utc} for all validated visits
     """
     if obsdate_utc is None:
         obsdate_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    logger.info(f"Discovering visits for date: {obsdate_utc}")
+    if cached_visits is None:
+        cached_visits = {}
+
+    logger.info(
+        f"Discovering visits for date: {obsdate_utc} (cached: {len(cached_visits)})"
+    )
 
     try:
         # Create Butler with wildcard collection pattern to search all subcollections
@@ -187,9 +200,32 @@ def discover_visits(
         )
 
         # Extract visit numbers and convert to integers
-        visits = [int(coll.split("/")[-1]) for coll in collections]
+        all_visits = [int(coll.split("/")[-1]) for coll in collections]
 
-        # Filter by observation date using parallel processing
+        # Separate cached and new visits
+        cached_valid_visits = []
+        new_visits = []
+
+        for visit in all_visits:
+            if visit in cached_visits:
+                # Check if cached date matches current filter
+                if cached_visits[visit] == obsdate_utc:
+                    cached_valid_visits.append(visit)
+                    logger.debug(f"Visit {visit} found in cache (date matches)")
+                else:
+                    # Date filter changed, need to re-check
+                    new_visits.append(visit)
+                    logger.debug(
+                        f"Visit {visit} in cache but date changed ({cached_visits[visit]} -> {obsdate_utc})"
+                    )
+            else:
+                new_visits.append(visit)
+
+        logger.info(
+            f"Total visits: {len(all_visits)}, cached: {len(cached_valid_visits)}, new: {len(new_visits)}"
+        )
+
+        # Filter new visits by observation date using parallel processing
         def check_visit_date(visit):
             """Check if visit matches the observation date"""
             try:
@@ -200,33 +236,53 @@ def discover_visits(
                 logger.debug(f"Visit {visit} observation date: {obstime}")
                 if obstime.startswith(obsdate_utc):
                     logger.debug(f"Visit {visit} date {obstime} matches {obsdate_utc}")
-                    return visit
-                return None
+                    return (visit, obsdate_utc)
+                return (visit, None)
             except Exception as e:
                 logger.warning(f"Failed to check visit {visit}: {e}")
-                return None
+                return (visit, None)
 
-        # Parallel processing with max 32 cores
-        logger.info(f"Filtering visits by observation date: {obsdate_utc}")
-        results = Parallel(n_jobs=min(32, len(visits)), verbose=1)(
-            delayed(check_visit_date)(visit) for visit in visits
-        )
+        # Only check new visits if there are any
+        new_valid_visits = []
+        updated_cache = cached_visits.copy()
 
-        # Filter out None values
-        visits_use = [v for v in results if v is not None]
+        if new_visits:
+            # Parallel processing with max 32 cores
+            logger.info(f"Checking {len(new_visits)} new visits for date: {obsdate_utc}")
+            results = Parallel(n_jobs=min(32, len(new_visits)), verbose=1)(
+                delayed(check_visit_date)(visit) for visit in new_visits
+            )
+
+            # Update cache and collect valid visits
+            for visit, date in results:
+                if date is not None:
+                    new_valid_visits.append(visit)
+                    updated_cache[visit] = date
+                else:
+                    # Visit doesn't match date filter, remove from cache if present
+                    updated_cache.pop(visit, None)
+
+            logger.info(
+                f"Found {len(new_valid_visits)} new valid visits out of {len(new_visits)} checked"
+            )
+        else:
+            logger.info("No new visits to check")
+
+        # Combine cached and new valid visits
+        all_valid_visits = cached_valid_visits + new_valid_visits
 
         # Sort and return as list
-        visit_list = sorted(visits_use)
+        visit_list = sorted(all_valid_visits)
         logger.info(
-            f"Found {len(visit_list)} visits out of {len(visits)} visits under {base_collection} (filtered by {obsdate_utc})"
+            f"Total valid visits: {len(visit_list)} (cached: {len(cached_valid_visits)}, new: {len(new_valid_visits)})"
         )
 
-        return visit_list
+        return visit_list, updated_cache
 
     except Exception as e:
         logger.error(f"Error discovering visits: {e}")
         logger.warning("Falling back to empty visit list")
-        return []
+        return [], cached_visits
 
 
 def load_visit_data(datastore: str, base_collection: str, visit: int):
