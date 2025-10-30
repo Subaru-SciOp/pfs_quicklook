@@ -253,8 +253,9 @@ pfs_quicklook/
 - Uses joblib Parallel for multi-core processing
 - Returns: List of (arm, transformed_array, metadata, error) tuples
 
-**`build_1d_bokeh_figure_single_visit(datastore, base_collection, visit, fiber_ids, ylim)`**:
+**`build_1d_bokeh_figure_single_visit(datastore, base_collection, visit, fiber_ids, ylim=None)`**:
 - Creates interactive Bokeh 1D spectra plot
+- Automatically calculates y-axis range using percentile-based method (0.5th-99.5th percentile) if ylim is None
 - Returns: Bokeh figure object
 
 **`build_1d_spectra_as_image(datastore, base_collection, visit, fiber_ids, scale_algo)`**:
