@@ -275,10 +275,8 @@ def on_obcode_change(event):
         return
 
     selected_obcodes = obcode_mc.value
-    if not selected_obcodes:
-        return
 
-    # Get fiber IDs for selected OB codes
+    # Get fiber IDs for selected OB codes (empty list if no OB codes selected)
     obcode_to_fibers = state["visit_data"]["obcode_to_fibers"]
     fiber_ids = []
     for obcode in selected_obcodes:
@@ -315,10 +313,8 @@ def on_fiber_change(event):
         return
 
     selected_fibers = fibers_mc.value
-    if not selected_fibers:
-        return
 
-    # Get OB codes for selected fiber IDs
+    # Get OB codes for selected fiber IDs (empty set if no fibers selected)
     fiber_to_obcode = state["visit_data"]["fiber_to_obcode"]
     obcodes = set()
     for fiber_id in selected_fibers:
