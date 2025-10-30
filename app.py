@@ -53,6 +53,7 @@ def get_session_state():
             },
             "programmatic_update": False,
             "visit_discovery": {"status": None, "result": None, "error": None},
+            "visit_cache": {},  # {visit_id: obsdate_utc} - caches validated visits
         }
 
     return ctx.app_state
@@ -777,32 +778,37 @@ def get_visit_discovery_state():
     return state["visit_discovery"]
 
 
-def discover_visits_worker(state_dict):
+def discover_visits_worker(state_dict, visit_cache):
     """Worker function that runs in background thread
 
     Parameters
     ----------
     state_dict : dict
         Dictionary reference to store results (passed from main thread)
+    visit_cache : dict
+        Dictionary of {visit_id: obsdate_utc} for previously validated visits
     """
     try:
         logger.info(f"Starting visit discovery for date: {OBSDATE_UTC}")
         state_dict["status"] = "running"
 
-        # Discover visits (this is the slow part)
-        discovered_visits = discover_visits(
+        # Discover visits with caching (this is the slow part)
+        discovered_visits, updated_cache = discover_visits(
             DATASTORE,
             BASE_COLLECTION,
             OBSDATE_UTC,
+            cached_visits=visit_cache,
         )
 
         # Store results
         if discovered_visits:
             state_dict["status"] = "success"
             state_dict["result"] = discovered_visits
+            state_dict["updated_cache"] = updated_cache
             logger.info(f"Loaded {len(discovered_visits)} visits")
         else:
             state_dict["status"] = "no_data"
+            state_dict["updated_cache"] = updated_cache
             logger.warning("No visits discovered. Visit list will be empty.")
 
     except Exception as e:
@@ -823,12 +829,18 @@ def check_visit_discovery():
         True to continue periodic checking, False to stop
     """
     state = get_visit_discovery_state()
+    session_state = get_session_state()
     status = state.get("status")
 
     if status == "success":
         discovered_visits = state["result"]
+        updated_cache = state.get("updated_cache", {})
         old_count = len(visit_mc.options) if visit_mc.options else 0
         new_count = len(discovered_visits) if discovered_visits else 0
+
+        # Update session cache
+        session_state["visit_cache"] = updated_cache
+        logger.info(f"Updated visit cache: {len(updated_cache)} visits")
 
         # Update widget
         visit_mc.options = discovered_visits
@@ -856,17 +868,22 @@ def check_visit_discovery():
             logger.info(f"Visit list refreshed: {new_count} visits (no changes)")
 
         # Reset and stop
-        state.update({"status": None, "result": None})
+        state.update({"status": None, "result": None, "updated_cache": None})
         return False
 
     elif status == "no_data":
+        updated_cache = state.get("updated_cache", {})
+
+        # Update session cache even when no data
+        session_state["visit_cache"] = updated_cache
+
         visit_mc.options = []
         visit_mc.value = []
         visit_mc.placeholder = "No visits found"
         visit_mc.disabled = False
         pn.state.notifications.warning("No visits found for the specified date")
 
-        state["status"] = None
+        state.update({"status": None, "updated_cache": None})
         return False
 
     elif status == "error":
@@ -892,13 +909,17 @@ def trigger_visit_refresh():
     Only runs if no discovery is already in progress.
     """
     state = get_visit_discovery_state()
+    session_state = get_session_state()
 
     if state.get("status") != "running":
         logger.info("Auto-refreshing visit list...")
         pn.state.notifications.info("Updating visit list...", duration=3000)
 
+        # Pass current cache to worker
+        visit_cache = session_state.get("visit_cache", {})
+
         thread = threading.Thread(
-            target=discover_visits_worker, args=(state,), daemon=True
+            target=discover_visits_worker, args=(state, visit_cache), daemon=True
         )
         thread.start()
 
@@ -925,7 +946,7 @@ def on_session_created():
 
     # Initialize session state (automatically done by get_session_state())
     # This call ensures the state is initialized for this session
-    get_session_state()
+    session_state = get_session_state()
 
     # Reset visit widget to loading state
     visit_mc.placeholder = "Loading visits..."
@@ -936,9 +957,14 @@ def on_session_created():
     # Get session-specific state
     state = get_visit_discovery_state()
 
+    # Get current cache (empty for new sessions, may have data for existing sessions)
+    visit_cache = session_state.get("visit_cache", {})
+
     # Start initial visit discovery in background thread
     logger.info("Starting initial visit discovery for this session...")
-    thread = threading.Thread(target=discover_visits_worker, args=(state,), daemon=True)
+    thread = threading.Thread(
+        target=discover_visits_worker, args=(state, visit_cache), daemon=True
+    )
     thread.start()
 
     # Start periodic callback to check for results (every 500ms)
