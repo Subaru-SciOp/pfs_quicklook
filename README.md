@@ -83,7 +83,7 @@ You need to have access to one of PFSA servers to run this app. Also, you need a
 7. Access the app from your web browser:
 
    ```
-   http://<your_server_hostname>:5106/app
+   http://<your_server_hostname>:5106/quicklook/app
    ```
 
 ## Usage
