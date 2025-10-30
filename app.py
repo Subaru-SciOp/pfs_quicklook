@@ -145,6 +145,19 @@ pane_1d = pn.Column(height=550, sizing_mode="scale_width")
 pane_1d_image = pn.Column(sizing_mode="scale_width")
 log_md = pn.pane.Markdown("**Ready.**")
 
+# --- Loading spinner ---
+loading_spinner = pn.indicators.LoadingSpinner(value=True, size=100)
+loading_message = pn.pane.Markdown(
+    "", styles={"font-size": "1.2em", "text-align": "center"}
+)
+loading_overlay = pn.Column(
+    pn.Spacer(height=100),
+    loading_spinner,
+    loading_message,
+    align="center",
+    sizing_mode="scale_width",
+)
+
 tabs = pn.Tabs(
     ("2D Images", pane_2d),
     ("1D Image", pane_1d_image),
@@ -169,6 +182,48 @@ def toggle_buttons(disabled=True, include_load=False):
     btn_plot_1d.disabled = disabled
     btn_plot_1d_image.disabled = disabled
     btn_reset.disabled = disabled
+
+
+def show_loading_spinner(message, tab_index=None):
+    """Show loading spinner in main panel
+
+    Parameters
+    ----------
+    message : str
+        Message to display below the spinner
+    tab_index : int, optional
+        Tab index to show spinner in (0=2D, 1=1D Image, 2=1D Spectra).
+        If None, shows in currently active tab.
+    """
+    loading_message.object = f"**{message}**"
+
+    # Determine which tab to show spinner in
+    if tab_index is None:
+        tab_index = tabs.active
+
+    # Clear the appropriate pane and show spinner
+    if tab_index == 0:
+        pane_2d.clear()
+        pane_2d.append(loading_overlay)
+    elif tab_index == 1:
+        pane_1d_image.clear()
+        pane_1d_image.append(loading_overlay)
+    elif tab_index == 2:
+        pane_1d.clear()
+        pane_1d.append(loading_overlay)
+
+
+def hide_loading_spinner():
+    """Hide loading spinner from all panes"""
+    # Remove spinner from all panes if present
+    if loading_overlay in pane_2d.objects:
+        pane_2d.remove(loading_overlay)
+    if loading_overlay in pane_1d_image.objects:
+        pane_1d_image.remove(loading_overlay)
+    if loading_overlay in pane_1d.objects:
+        pane_1d.remove(loading_overlay)
+
+    loading_message.object = ""
 
 
 # --- Callbacks ---
@@ -376,6 +431,10 @@ def plot_2d_callback(event=None):
         pn.state.notifications.warning("DetectorMap overlay is not supported yet.")
 
     try:
+        # Show loading spinner in 2D tab
+        show_loading_spinner("Processing 2D images...", tab_index=0)
+        tabs.active = 0  # Switch to 2D tab to show spinner
+
         status_text.object = "**Checking data availability and creating 2D plots...**"
         logger.info(
             f"Attempting to load all {len(all_arms)} arms for {len(spectros)} spectrographs"
@@ -581,7 +640,8 @@ def plot_2d_callback(event=None):
         logger.error(f"Failed to show 2D image: {e}")
         status_text.object = "**Error creating 2D plot**"
     finally:
-        # Re-enable buttons after processing
+        # Hide loading spinner and re-enable buttons after processing
+        hide_loading_spinner()
         toggle_buttons(disabled=False, include_load=True)
 
 
@@ -620,10 +680,11 @@ def plot_1d_callback(event=None):
     fibers = fibers_mc.value
 
     try:
-        status_text.object = "**Creating 1D plot...**"
+        # Show loading spinner in 1D Spectra tab
+        show_loading_spinner("Creating 1D spectra plot...", tab_index=2)
+        tabs.active = 2  # Switch to 1D tab to show spinner
 
-        # Clear existing content
-        pane_1d.clear()
+        status_text.object = "**Creating 1D plot...**"
 
         # Use Bokeh for rendering
         p_fig1d = build_1d_bokeh_figure_single_visit(
@@ -632,9 +693,10 @@ def plot_1d_callback(event=None):
             visit=visit,
             fiber_ids=fibers,
         )
-        pane_1d.append(pn.pane.Bokeh(p_fig1d, sizing_mode="scale_width"))
 
-        tabs.active = 2  # Switch to 1D tab
+        # Clear spinner and show plot
+        hide_loading_spinner()
+        pane_1d.append(pn.pane.Bokeh(p_fig1d, sizing_mode="scale_width"))
         status_text.object = f"**1D plot created for visit {visit}**"
         pn.state.notifications.success("1D plot created")
 
@@ -648,7 +710,8 @@ def plot_1d_callback(event=None):
         logger.error(f"Failed to show 1D spectra: {e}")
         status_text.object = "**Error creating 1D plot**"
     finally:
-        # Re-enable buttons after processing
+        # Hide loading spinner and re-enable buttons after processing
+        hide_loading_spinner()
         toggle_buttons(disabled=False, include_load=True)
 
 
@@ -682,10 +745,11 @@ def plot_1d_image_callback(event=None):
     scale_algo = scale_sel.value
 
     try:
-        status_text.object = "**Creating 1D spectra image...**"
+        # Show loading spinner in 1D Image tab
+        show_loading_spinner("Creating 1D spectra image...", tab_index=1)
+        tabs.active = 1  # Switch to 1D Image tab to show spinner
 
-        # Clear existing content
-        pane_1d_image.clear()
+        status_text.object = "**Creating 1D spectra image...**"
 
         # Build 1D spectra as 2D image
         hv_img = build_1d_spectra_as_image(
@@ -696,10 +760,9 @@ def plot_1d_image_callback(event=None):
             scale_algo=scale_algo,
         )
 
-        # Display HoloViews image
+        # Clear spinner and display HoloViews image
+        hide_loading_spinner()
         pane_1d_image.append(pn.pane.HoloViews(hv_img, backend="bokeh"))
-
-        tabs.active = 1  # Switch to 1D Image tab
         status_text.object = f"**1D spectra image created for visit {visit}**"
         pn.state.notifications.success("1D spectra image created")
 
@@ -715,7 +778,8 @@ def plot_1d_image_callback(event=None):
         logger.error(f"Failed to create 1D spectra image: {e}")
         status_text.object = "**Error creating 1D spectra image**"
     finally:
-        # Re-enable buttons after processing
+        # Hide loading spinner and re-enable buttons after processing
+        hide_loading_spinner()
         toggle_buttons(disabled=False, include_load=True)
 
 
