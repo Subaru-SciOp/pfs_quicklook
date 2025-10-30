@@ -954,6 +954,9 @@ def build_1d_spectra_as_image(
         # Flip array vertically - exactly like existing 2D code
         flipped_array = np.flipud(transformed_array)
 
+        # Also flip the original flux array for hover display
+        flipped_flux = np.flipud(flux_array_float)
+
         # Create fiberId lookup array for hover tool
         # Create a 2D array where each row contains the fiberId for that row
         # This allows hover to show fiberId
@@ -962,9 +965,12 @@ def build_1d_spectra_as_image(
         # Tile fiberId array to match wavelength dimension
         fiber_id_2d = np.tile(flipped_fiber_ids[:, np.newaxis], (1, n_wavelength))
 
-        # Stack flipped_array and fiber_id_2d along a new axis for multiple vdims
+        # Stack flipped_array, flipped_flux, and fiber_id_2d along a new axis for multiple vdims
         # HoloViews Image can have multiple value dimensions
-        combined_data = np.stack([flipped_array, fiber_id_2d], axis=-1)
+        # - intensity: transformed (scaled) values for display
+        # - flux: original flux values for hover tooltip
+        # - fiberId: fiber ID for hover tooltip
+        combined_data = np.stack([flipped_array, flipped_flux, fiber_id_2d], axis=-1)
 
         # Create HoloViews Image with wavelength and fiber index coordinates
         # bounds = (left, bottom, right, top) in data coordinates
@@ -981,7 +987,7 @@ def build_1d_spectra_as_image(
                 n_fibers - 0.5,  # Fiber index ends at n-1
             ),
             kdims=["wavelength", "fiber_index"],
-            vdims=["intensity", "fiberId"],  # Two value dimensions
+            vdims=["intensity", "flux", "fiberId"],  # Three value dimensions
         )
 
         # Calculate plot dimensions
@@ -996,29 +1002,16 @@ def build_1d_spectra_as_image(
         vmin = transformed_array.min()
         vmax = transformed_array.max()
 
-        # Create hover tool with wavelength, fiber index, and fiberId
-        hover = HoverTool(
-            tooltips=[
-                ("Wavelength", "$x{0.1f} nm"),
-                ("Fiber Index", "$y{int}"),  # 0-based fiber index
-                (
-                    "Fiber ID",
-                    "@fiberId{int}",
-                ),  # Actual fiberId from lookup array (integer)
-                ("Intensity", "@intensity{0.2f}"),  # Use @intensity instead of @image
-            ]
-        )
-
-        # Apply options
+        # Apply options with hover_tooltips
         # NOTE: data_aspect=1.0 causes rendering issues with large non-square arrays
         # For 2D detector images (4k×4k square), data_aspect=1.0 works fine
         # For 1D spectra image (2394×11501 landscape), it prevents rendering
         img.opts(
             cmap="cividis",
             clim=(vmin, vmax),
-            colorbar=True,
+            colorbar=False,  # Colorbar removed - scaled values not meaningful
             tools=[
-                hover,
+                "hover",
                 "box_zoom",
                 "wheel_zoom",
                 "pan",
@@ -1038,6 +1031,12 @@ def build_1d_spectra_as_image(
             toolbar="above",
             axiswise=True,  # Disable axis linking
             framewise=True,  # Each frame is independent
+            hover_tooltips=[
+                ("Wavelength", "$x{0.1f} nm"),
+                ("Fiber Index", "$y{int}"),
+                ("Fiber ID", "@fiberId"),
+                ("Flux", "@flux{0.2f}"),
+            ],
         )
 
         logger.info("1D spectra image created successfully")
