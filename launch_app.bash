@@ -61,6 +61,7 @@ if [[ "$MODE" == "dev" ]]; then
     --address "$ADDRESS" \
     --port "$PORT" \
     --allow-websocket-origin="$ORIGIN:$PORT" \
+    --prefix quicklook \
     --dev
 else
   echo "Running in production mode with multi-threading"
@@ -69,6 +70,7 @@ else
     --address "$ADDRESS" \
     --port "$PORT" \
     --allow-websocket-origin="$ORIGIN:$PORT" \
+    --prefix quicklook \
     --num-threads 8
 fi
 
