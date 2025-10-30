@@ -248,7 +248,9 @@ def discover_visits(
 
         if new_visits:
             # Parallel processing with max 32 cores
-            logger.info(f"Checking {len(new_visits)} new visits for date: {obsdate_utc}")
+            logger.info(
+                f"Checking {len(new_visits)} new visits for date: {obsdate_utc}"
+            )
             results = Parallel(n_jobs=min(32, len(new_visits)), verbose=1)(
                 delayed(check_visit_date)(visit) for visit in new_visits
             )
@@ -678,13 +680,107 @@ def build_2d_figure_multi_arm(
     return hv_results
 
 
+# --- Helper function for automatic y-axis range calculation ---
+def compute_percentile_ylim(
+    flux_arrays, mask_arrays, variance_arrays=None, mask_flags=None
+):
+    """Calculate y-axis range from multiple fiber spectra using percentiles
+
+    Aggregates flux values from all selected fibers, filters out bad pixels
+    and outliers, then computes robust y-axis limits using percentiles.
+
+    Parameters
+    ----------
+    flux_arrays : list of ndarray
+        List of flux arrays, one per fiber
+    mask_arrays : list of ndarray
+        List of mask arrays (bitmask integers), one per fiber
+    variance_arrays : list of ndarray, optional
+        List of variance arrays, one per fiber. If provided, pixels with
+        abnormally large variance will be excluded.
+    mask_flags : int, optional
+        Bitmask value to test for bad pixels. If None, assumes mask_arrays
+        contain boolean values.
+
+    Returns
+    -------
+    ylim : tuple of float
+        Y-axis limits as (ymin, ymax)
+
+    Notes
+    -----
+    - Uses 0.5th and 99.5th percentiles to exclude extreme outliers
+    - Adds margins: 10% below, 20% above (wider for emission lines)
+    - Filters pixels using mask and variance (if available)
+    - Falls back to min/max if insufficient good pixels remain
+    """
+
+    all_good_flux = []
+
+    # Collect good pixels from all fibers
+    for i, flux in enumerate(flux_arrays):
+        mask = mask_arrays[i] if i < len(mask_arrays) else None
+        variance = (
+            variance_arrays[i] if variance_arrays and i < len(variance_arrays) else None
+        )
+
+        # Determine good pixels based on mask
+        if mask is not None:
+            if mask_flags is not None:
+                # Bitmask: test if any bad flags are set
+                bad = (mask & mask_flags) != 0
+                good = ~bad
+            else:
+                # Boolean mask: True = bad pixel
+                good = ~mask
+        else:
+            good = np.ones(len(flux), dtype=bool)
+
+        # Filter by variance if available
+        if variance is not None and np.any(good):
+            var_threshold = np.percentile(variance[good], 95)
+            good &= variance < var_threshold
+
+        # Collect good flux values
+        if np.any(good):
+            all_good_flux.extend(flux[good])
+
+    # Convert to array
+    all_good_flux = np.array(all_good_flux)
+
+    # Check if we have enough good data
+    if len(all_good_flux) < 10:
+        # Fallback: use min/max of all data (ignoring masks)
+        logger.warning(
+            "Insufficient good pixels for percentile calculation, using min/max"
+        )
+        all_flux = np.concatenate(flux_arrays)
+        return (float(np.min(all_flux)), float(np.max(all_flux)))
+
+    # Calculate percentiles
+    p_low = np.percentile(all_good_flux, 0.5)  # 0.5th percentile
+    p_high = np.percentile(all_good_flux, 99.9)  # 99.9th percentile
+
+    # Add margins
+    span = p_high - p_low
+    if span > 0:
+        y_min = p_low - 0.1 * span  # 10% margin below
+        y_max = p_high + 0.5 * span  # 50% margin above (wider for emission lines)
+    else:
+        # All values are identical (edge case)
+        y_min = p_low - 100  # arbitrary margin
+        y_max = p_high + 100
+
+    return (float(y_min), float(y_max))
+
+
 # --- 1D spectra builder using Bokeh (single visit) ---
 def build_1d_bokeh_figure_single_visit(
     datastore: str,
     base_collection: str,
     visit: int,
     fiber_ids,
-    ylim=(-5000, 10000),
+    ylim=None,
 ):
     """Build interactive Bokeh plot for 1D spectra of selected fibers
 
@@ -702,7 +798,9 @@ def build_1d_bokeh_figure_single_visit(
     fiber_ids : list of int
         Fiber IDs to display
     ylim : tuple of float, optional
-        Y-axis limits as (ymin, ymax). Default is (-5000, 10000).
+        Y-axis limits as (ymin, ymax). If None (default), automatically
+        calculates limits using percentile-based method that handles
+        emission lines and noise robustly.
 
     Returns
     -------
@@ -715,6 +813,10 @@ def build_1d_bokeh_figure_single_visit(
     b = get_butler(datastore, base_collection, visit)
     pfsConfig = b.get("pfsConfig", visit=visit)
     pfsMerged = b.get("pfsMerged", visit=visit)
+
+    # Get mask flags for bad pixel identification
+    # Following the original notebook approach: exclude NO_DATA, SAT, BAD, CR pixels
+    mask_flags = pfsMerged.flags.get("NO_DATA", "SAT", "BAD", "CR")
 
     # Create Bokeh figure
     # 1920x1080画面でサイドバー(320px)を引いた残り ~1500pxに最適化
@@ -748,12 +850,24 @@ def build_1d_bokeh_figure_single_visit(
         # 各fiberのレンダラーをグループ化して管理
         legend_items = []
 
+        # Collect flux/mask/variance for automatic ylim calculation
+        flux_arrays = []
+        mask_arrays = []
+        variance_arrays = []
+
         for i, fid in enumerate(fiber_ids):
             sel = pfsMerged.select(pfsConfig, fiberId=fid)
             wav = sel.wavelength[0]
             flx = sel.flux[0]
             var = sel.variance[0]
+            msk = sel.mask[0]
             err = (var**0.5) if var is not None else None
+
+            # Collect arrays for ylim calculation
+            flux_arrays.append(flx)
+            mask_arrays.append(msk)
+            if var is not None:
+                variance_arrays.append(var)
 
             # pfsConfigから該当fiberの情報を取得
             pfs_sel = pfsConfig.select(fiberId=fid)
@@ -837,10 +951,20 @@ def build_1d_bokeh_figure_single_visit(
         legend.label_text_font_size = "12pt"
         p.add_layout(legend, "right")
 
-        # Set y-axis limits if provided
-        if ylim:
-            p.y_range.start = ylim[0]
-            p.y_range.end = ylim[1]
+        # Calculate and set y-axis limits
+        if ylim is None:
+            # Automatic ylim calculation using percentile-based method
+            variance_for_calc = (
+                variance_arrays if len(variance_arrays) == len(flux_arrays) else None
+            )
+            ylim = compute_percentile_ylim(
+                flux_arrays, mask_arrays, variance_for_calc, mask_flags
+            )
+            logger.info(f"Auto-calculated ylim: {ylim}")
+
+        # Apply y-axis limits
+        p.y_range.start = ylim[0]
+        p.y_range.end = ylim[1]
 
     except Exception as e:
         # Create error figure
