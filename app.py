@@ -110,6 +110,13 @@ fibers_mc = pn.widgets.MultiChoice(
     search_option_limit=10,
 )
 
+btn_clear_selection = pn.widgets.Button(
+    name="Clear Selection",
+    button_type="default",
+    width=120,
+    sizing_mode="fixed",
+)
+
 subtract_sky_chk = pn.widgets.Checkbox(name="Sky subtraction", value=True)
 overlay_chk = pn.widgets.Checkbox(name="DetectorMap overlay", value=False)
 scale_sel = pn.widgets.Select(
@@ -384,6 +391,34 @@ def on_fiber_change(event):
     state["programmatic_update"] = False
 
     logger.info(f"Selected {len(obcodes)} OB codes from {len(selected_fibers)} fibers")
+
+
+def clear_selection_callback(event=None):
+    """Clear both OB Code and Fiber ID selections
+
+    Callback for Clear Selection button. Clears both OB Code and Fiber ID
+    widget selections simultaneously.
+
+    Parameters
+    ----------
+    event : panel.io.state.Event, optional
+        Panel button click event (unused)
+
+    Notes
+    -----
+    Uses programmatic_update flag to prevent circular reference issues
+    with bidirectional synchronization.
+    """
+    state = get_session_state()
+
+    # Clear both selections
+    state["programmatic_update"] = True
+    obcode_mc.value = []
+    fibers_mc.value = []
+    state["programmatic_update"] = False
+
+    logger.info("Cleared OB Code and Fiber ID selections")
+    pn.state.notifications.info("Selection cleared")
 
 
 def plot_2d_callback(event=None):
@@ -1056,6 +1091,7 @@ btn_plot_2d.on_click(plot_2d_callback)
 btn_plot_1d.on_click(plot_1d_callback)
 btn_plot_1d_image.on_click(plot_1d_image_callback)
 btn_reset.on_click(reset_app)
+btn_clear_selection.on_click(clear_selection_callback)
 obcode_mc.param.watch(on_obcode_change, "value")
 fibers_mc.param.watch(on_fiber_change, "value")
 
@@ -1069,6 +1105,7 @@ sidebar = pn.Column(
     btn_load_data,
     status_text,
     pn.layout.Divider(),
+    btn_clear_selection,
     obcode_mc,
     fibers_mc,
     pn.layout.Divider(),
