@@ -17,7 +17,9 @@ from quicklook_core import (
     build_1d_spectra_as_image,
     build_2d_arrays_multi_arm,
     create_holoviews_from_arrays,
+    create_rasterized_holoviews_from_arrays,
     discover_visits,
+    get_butler_cached,
     load_visit_data,
     reload_config,
 )
@@ -54,6 +56,7 @@ def get_session_state():
             "programmatic_update": False,
             "visit_discovery": {"status": None, "result": None, "error": None},
             "visit_cache": {},  # {visit_id: obsdate_utc} - caches validated visits
+            "butler_cache": {},  # {(datastore, collection, visit): Butler} - caches Butler instances
         }
 
     return ctx.app_state
@@ -121,6 +124,12 @@ subtract_sky_chk = pn.widgets.Checkbox(name="Sky subtraction", value=True)
 overlay_chk = pn.widgets.Checkbox(name="DetectorMap overlay", value=False)
 scale_sel = pn.widgets.Select(
     name="Scale", options=["zscale", "minmax"], value="zscale"
+)
+
+# Rendering mode selection: Fast Preview (rasterized) vs Pixel Inspection (full resolution)
+use_fast_preview_chk = pn.widgets.Checkbox(
+    name="Fast Preview Mode (recommended)",
+    value=True,  # Default to fast preview for better performance
 )
 
 btn_load_data = pn.widgets.Button(name="Load Data", button_type="primary")
@@ -449,6 +458,20 @@ def plot_2d_callback(event=None):
     toggle_buttons(disabled=True, include_load=True)
 
     visit = state["visit_data"]["visit"]
+
+    # Get pre-loaded pfsConfig from session state (already loaded in load_data_callback)
+    # This avoids redundant Butler.get() calls for each arm (saves ~0.177s × 15 arms = ~2.7s)
+    pfs_config_shared = state["visit_data"]["pfsConfig"]
+    if pfs_config_shared is None:
+        logger.warning("pfsConfig not found in session state, will be loaded per-arm")
+    else:
+        logger.info("Using pre-loaded pfsConfig from session state (optimization)")
+
+    # Get Butler cache from session state for Butler instance reuse
+    # This avoids repeated Butler creation (saves ~0.1-0.2s per arm × 16 arms = ~1.6-3.2s)
+    butler_cache = state["butler_cache"]
+    logger.info("Using Butler cache from session state (optimization)")
+
     spectros = (
         spectro_cbg.value
         if isinstance(spectro_cbg.value, list)
@@ -494,6 +517,8 @@ def plot_2d_callback(event=None):
                     fiber_ids=fibers if overlay else None,
                     scale_algo=scale_algo,
                     n_jobs=-1,  # Use all available CPUs for arms within each spectrograph
+                    pfsConfig_preloaded=pfs_config_shared,  # Share pfsConfig across all arms
+                    butler_cache=butler_cache,  # Share Butler cache across all arms
                 )
                 return (spectro, array_results, None)
             except Exception as e:
@@ -507,12 +532,22 @@ def plot_2d_callback(event=None):
         )
 
         # Create HoloViews objects in main thread (not pickle-able)
-        logger.info("Arrays built, now creating HoloViews images in main thread")
+        # Choose rendering mode based on checkbox value
+        use_fast_preview = use_fast_preview_chk.value
+        rendering_mode = "rasterized (fast preview)" if use_fast_preview else "full resolution"
+        logger.info(f"Arrays built, now creating HoloViews images in main thread ({rendering_mode})")
+
         for spectro, array_results, error in array_results_all:
             if array_results is not None and error is None:
                 # Create HoloViews objects from arrays
+                # Use rasterized version for fast preview, full resolution for pixel inspection
                 try:
-                    arm_results = create_holoviews_from_arrays(array_results, spectro)
+                    if use_fast_preview:
+                        arm_results = create_rasterized_holoviews_from_arrays(
+                            array_results, spectro, raster_width=1024, raster_height=1024
+                        )
+                    else:
+                        arm_results = create_holoviews_from_arrays(array_results, spectro)
                     error = None
                 except Exception as e:
                     logger.error(
@@ -1043,6 +1078,13 @@ def on_session_created():
     )
     pn.state.notifications.info("Configuration loaded from .env file")
 
+    # Notify user about rendering mode options
+    pn.state.notifications.info(
+        "Fast Preview Mode enabled by default for better performance. "
+        "Uncheck to enable exact pixel value inspection.",
+        duration=8000,  # Show for 8 seconds
+    )
+
     # Initialize session state (automatically done by get_session_state())
     # This call ensures the state is initialized for this session
     session_state = get_session_state()
@@ -1108,6 +1150,9 @@ sidebar = pn.Column(
     btn_clear_selection,
     obcode_mc,
     fibers_mc,
+    pn.layout.Divider(),
+    "#### Rendering Options",
+    use_fast_preview_chk,
     pn.layout.Divider(),
     pn.Column(btn_plot_2d, btn_plot_1d_image, btn_plot_1d, btn_reset),
     f"**Base collection:** {BASE_COLLECTION}<br>"

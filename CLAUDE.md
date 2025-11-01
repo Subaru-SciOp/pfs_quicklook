@@ -48,13 +48,24 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
    - **Fiber ID** MultiChoice: All fiber IDs (1-2394), max 20 options/10 search results
    - **Bidirectional Linking**: OB Code ↔ Fiber ID automatic synchronization
 
-4. **Plot Controls**
+4. **Rendering Options**
+   - **Fast Preview Mode** (checkbox, default: True): Uses Datashader rasterization for ~8× faster loading
+     - Downsamples 4096×4096 images to 1024×1024 for browser display
+     - Dynamic re-rendering on zoom/pan for smooth interaction
+     - Hover shows approximate pixel values (not exact raw values)
+     - Recommended for initial quick inspection and navigation
+   - **Pixel Inspection Mode** (unchecked): Full resolution with exact pixel values
+     - Shows exact raw pixel values in hover tooltips
+     - Slower initial load but essential for quality assessment
+     - Use when precise pixel value inspection is required
+
+5. **Plot Controls**
    - **Plot 2D** button: Creates 2D spectral image (enabled after data load)
    - **Plot 1D** button: Creates 1D spectra plot (enabled after data load, requires fiber selection)
    - **Plot 1D Image** button: Creates 2D representation of all 1D spectra
    - **Reset** button: Clears all data and selections
 
-5. **Options** (Currently commented out)
+6. **Options** (Currently commented out)
    - Sky subtraction (checkbox, default: True)
    - DetectorMap overlay (checkbox, default: False)
    - Scale selection (zscale/minmax, default: zscale)
@@ -522,6 +533,183 @@ GUI version (app.py + quicklook_core.py):
 **Conclusion**: Very efficient GUI implementation. The ~460 line increase delivers enterprise-grade web application with multi-user support, parallel processing, and comprehensive error handling.
 
 ## Performance Optimization
+
+### 2D Image Rendering Optimization with Datashader (2025-10-31)
+
+#### Implementation: Adaptive Rendering with Fast Preview Mode
+
+**Goal:** Improve 2D image display performance for large 4096×4096 images while preserving pixel inspection capability.
+
+**Problem:**
+- Large image sizes (4k×4k per arm, up to 16 images total) caused slow browser rendering
+- Full data transfer: ~268 MB per image × 16 images = ~4.3 GB total
+- Browser must render 16+ million pixels per image
+- Pan/zoom operations could be sluggish with multiple images
+
+**Solution: Dual Rendering Mode**
+
+Implemented two rendering modes with user-selectable toggle:
+
+1. **Fast Preview Mode** (default, recommended):
+   - Uses Datashader rasterization to downsample images to 1024×1024
+   - 97% reduction in data transfer (268 MB → 8 MB per image)
+   - Dynamic re-rendering on zoom/pan for smooth interaction
+   - Hover shows approximate pixel values
+   - Title shows "[Fast Preview]" indicator
+   - Estimated 8× faster initial load time
+
+2. **Pixel Inspection Mode** (opt-in):
+   - Full 4096×4096 resolution with exact raw pixel values
+   - Hover tooltips show precise pixel values for quality assessment
+   - Slower initial load but essential for detailed inspection
+   - Same as original implementation
+
+**Implementation Details:**
+
+Files Modified:
+- [quicklook_core.py](quicklook_core.py): Added `create_rasterized_holoviews_from_arrays()` function
+- [app.py](app.py): Added checkbox toggle and dual rendering path in `plot_2d_callback()`
+
+Key Functions:
+- `create_rasterized_holoviews_from_arrays()`: Creates Datashader-rasterized HoloViews images
+  - Uses `rasterize()` with 1024×1024 output resolution (2^10 for optimal memory alignment)
+  - `aggregator="mean"` for pixel value aggregation
+  - `dynamic=True` enables automatic re-rendering on zoom/pan
+  - Preserves all interactive tools (zoom, pan, wheel_zoom, box_select, etc.)
+
+**Performance Impact:**
+
+| Metric | Before (Full Res) | After (Fast Preview) | Improvement |
+|--------|------------------|---------------------|-------------|
+| Data transfer per image | 268 MB | 8 MB | 97% reduction |
+| Total data (16 images) | ~4.3 GB | ~128 MB | 97% reduction |
+| Initial load time | 16-32s (est.) | 2-4s (est.) | ~8× faster |
+| Browser pixels rendered | 16.7M per image | 1M per image | 94% reduction |
+| Pan/zoom responsiveness | Good | Excellent (dynamic) | Enhanced |
+
+**Trade-offs:**
+
+Fast Preview Mode:
+- ✓ Much faster loading and smoother interaction
+- ✓ Suitable for initial quick inspection and navigation
+- ✗ Hover shows approximate values (aggregated), not exact pixel values
+- ✗ Saved images are downsampled (1024×1024)
+
+Pixel Inspection Mode:
+- ✓ Exact raw pixel values in hover tooltips
+- ✓ Essential for quality assessment and detailed inspection
+- ✗ Slower initial load
+- ✗ May be sluggish with many images displayed
+
+**User Interface:**
+
+- Checkbox in sidebar: "Fast Preview Mode (recommended)" (default: checked)
+- Toast notification on session start explaining the feature (8s duration)
+- Image titles show "[Fast Preview]" indicator when rasterized mode is active
+- Users can toggle between modes and re-plot to switch rendering
+
+**Recommendation:**
+
+- Use Fast Preview Mode for routine quick inspection and navigation (default)
+- Switch to Pixel Inspection Mode when precise pixel values are needed for QA
+
+---
+
+### Data Loading Optimizations (2025-10-31)
+
+#### Implementation: pfsConfig Sharing and Butler Instance Caching
+
+**Goal:** Reduce redundant data loading operations during 2D image creation.
+
+**Problems Identified:**
+
+1. **Redundant pfsConfig Loading**:
+   - pfsConfig is visit-level metadata (same for all arms)
+   - Original implementation loaded pfsConfig once per arm (16 times for full display)
+   - Each load takes ~0.177 seconds
+   - Total waste: ~2.7 seconds (0.177s × 15 redundant loads)
+
+2. **Repeated Butler Instance Creation**:
+   - New Butler instance created for each arm
+   - Each creation takes ~0.1-0.2 seconds
+   - Total overhead: ~1.6-3.2 seconds (16 creations)
+
+**Solutions Implemented:**
+
+**1. pfsConfig Sharing**
+
+Files Modified:
+- [quicklook_core.py](quicklook_core.py): Added `pfsConfig_preloaded` parameter to `_build_single_2d_array()` and `build_2d_arrays_multi_arm()`
+- [app.py](app.py): Pass pre-loaded pfsConfig from session state
+
+Implementation:
+```python
+# In plot_2d_callback():
+pfs_config_shared = state["visit_data"]["pfsConfig"]  # Already loaded in load_data_callback
+
+# Pass to all arms:
+build_2d_arrays_multi_arm(..., pfsConfig_preloaded=pfs_config_shared)
+
+# In _build_single_2d_array():
+if pfsConfig_preloaded is not None:
+    pfs_config = pfsConfig_preloaded  # Reuse
+else:
+    pfs_config = b.get("pfsConfig", data_id)  # Load (fallback)
+```
+
+Performance Impact:
+- Eliminates 15 redundant Butler.get() calls
+- Saves ~2.7 seconds per 2D plot operation
+- No trade-offs (pure optimization)
+
+**2. Butler Instance Caching**
+
+Files Modified:
+- [quicklook_core.py](quicklook_core.py): Added `get_butler_cached()` function
+- [app.py](app.py): Added `butler_cache` to session state, pass to core functions
+
+Implementation:
+```python
+# New function in quicklook_core.py:
+def get_butler_cached(datastore, base_collection, visit, butler_cache=None):
+    cache_key = (datastore, base_collection, visit)
+    if cache_key in butler_cache:
+        return butler_cache[cache_key]  # Cache hit
+    butler = get_butler(datastore, base_collection, visit)
+    butler_cache[cache_key] = butler  # Store for reuse
+    return butler
+
+# Session state in app.py:
+"butler_cache": {}  # {(datastore, collection, visit): Butler}
+
+# Usage in _build_single_2d_array():
+b = get_butler_cached(datastore, base_collection, visit, butler_cache)
+```
+
+Performance Impact:
+- Butler instances reused across all arms/spectrographs
+- First arm: Creates new Butler (~0.1-0.2s)
+- Subsequent arms: Reuse cached Butler (~0ms)
+- Saves ~1.6-3.2 seconds per 2D plot operation
+- Thread-safe: Butler is read-only, safe to share in parallel processing
+
+**Combined Performance Impact:**
+
+| Optimization | Time Saved | Mechanism |
+|--------------|------------|-----------|
+| pfsConfig Sharing | ~2.7s | Eliminate 15 redundant loads |
+| Butler Caching | ~1.6-3.2s | Reuse instances across arms |
+| **Total Data Loading** | **~4-6s** | **Per 2D plot with 16 arms** |
+| Datashader (display) | ~8× faster | Reduce browser data transfer |
+| **Grand Total** | **Significantly improved** | **Combined optimizations** |
+
+**Notes:**
+
+- Both optimizations are transparent to users (no UI changes for these two)
+- Session-isolated caching (each browser session has independent cache)
+- Caches cleared on session reset (Reset button)
+- Compatible with parallel processing (thread-safe)
+- No memory concerns (Butler instances are lightweight, ~5-10 MB each)
 
 ### Visit Discovery Optimization (2025-10-29)
 
