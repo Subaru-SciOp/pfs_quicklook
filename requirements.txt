@@ -1,7 +1,7 @@
 panel
 watchfiles
 loguru
-"holoviews[recommended]"
+holoviews
 datashader
 colorcet
 joblib
