@@ -161,18 +161,22 @@ pane_1d = pn.Column(height=550, sizing_mode="scale_width")
 pane_1d_image = pn.Column(sizing_mode="scale_width")
 log_md = pn.pane.Markdown("**Ready.**")
 
-# --- Loading spinner ---
-loading_spinner = pn.indicators.LoadingSpinner(value=True, size=100)
-loading_message = pn.pane.Markdown(
-    "", styles={"font-size": "1.2em", "text-align": "center"}
-)
-loading_overlay = pn.Column(
-    pn.Spacer(height=100),
-    loading_spinner,
-    loading_message,
-    align="center",
-    sizing_mode="scale_width",
-)
+
+# --- Loading spinner helpers ---
+def create_loading_overlay(message):
+    """Build a fresh loading spinner overlay for a target pane."""
+
+    return pn.Column(
+        pn.Spacer(height=100),
+        pn.indicators.LoadingSpinner(value=True, size=100),
+        pn.pane.Markdown(
+            f"**{message}**",
+            styles={"font-size": "1.2em", "text-align": "center"},
+        ),
+        align="center",
+        sizing_mode="scale_width",
+    )
+
 
 tabs = pn.Tabs(
     ("2D Images", pane_2d),
@@ -211,7 +215,7 @@ def show_loading_spinner(message, tab_index=None):
         Tab index to show spinner in (0=2D, 1=1D Image, 2=1D Spectra).
         If None, shows in currently active tab.
     """
-    loading_message.object = f"**{message}**"
+    overlay = create_loading_overlay(message)
 
     # Determine which tab to show spinner in
     if tab_index is None:
@@ -219,27 +223,15 @@ def show_loading_spinner(message, tab_index=None):
 
     # Clear the appropriate pane and show spinner
     if tab_index == 0:
-        pane_2d.clear()
-        pane_2d.append(loading_overlay)
+        pane_2d.objects = [overlay]
     elif tab_index == 1:
-        pane_1d_image.clear()
-        pane_1d_image.append(loading_overlay)
+        pane_1d_image.objects = [overlay]
     elif tab_index == 2:
-        pane_1d.clear()
-        pane_1d.append(loading_overlay)
+        pane_1d.objects = [overlay]
 
 
 def hide_loading_spinner():
-    """Hide loading spinner from all panes"""
-    # Remove spinner from all panes if present
-    if loading_overlay in pane_2d.objects:
-        pane_2d.remove(loading_overlay)
-    if loading_overlay in pane_1d_image.objects:
-        pane_1d_image.remove(loading_overlay)
-    if loading_overlay in pane_1d.objects:
-        pane_1d.remove(loading_overlay)
-
-    loading_message.object = ""
+    """No-op placeholder retained for backward compatibility."""
 
 
 # --- Callbacks ---
@@ -534,8 +526,12 @@ def plot_2d_callback(event=None):
         # Create HoloViews objects in main thread (not pickle-able)
         # Choose rendering mode based on checkbox value
         use_fast_preview = use_fast_preview_chk.value
-        rendering_mode = "rasterized (fast preview)" if use_fast_preview else "full resolution"
-        logger.info(f"Arrays built, now creating HoloViews images in main thread ({rendering_mode})")
+        rendering_mode = (
+            "rasterized (fast preview)" if use_fast_preview else "full resolution"
+        )
+        logger.info(
+            f"Arrays built, now creating HoloViews images in main thread ({rendering_mode})"
+        )
 
         for spectro, array_results, error in array_results_all:
             if array_results is not None and error is None:
@@ -544,10 +540,15 @@ def plot_2d_callback(event=None):
                 try:
                     if use_fast_preview:
                         arm_results = create_rasterized_holoviews_from_arrays(
-                            array_results, spectro, raster_width=1024, raster_height=1024
+                            array_results,
+                            spectro,
+                            raster_width=1024,
+                            raster_height=1024,
                         )
                     else:
-                        arm_results = create_holoviews_from_arrays(array_results, spectro)
+                        arm_results = create_holoviews_from_arrays(
+                            array_results, spectro
+                        )
                     error = None
                 except Exception as e:
                     logger.error(
@@ -687,9 +688,9 @@ def plot_2d_callback(event=None):
         for spectro in sorted(spectrograph_panels.keys()):
             tab_items.append((f"SM{spectro}", spectrograph_panels[spectro]))
 
-        # Clear existing content and add new tabs
-        pane_2d.clear()
-        pane_2d.append(pn.Tabs(*tab_items))
+        # Replace loading spinner with new tabs in one atomic operation
+        new_tabs = pn.Tabs(*tab_items)
+        pane_2d.objects = [new_tabs]
 
         tabs.active = 0  # Switch to 2D tab
         status_text.object = f"**2D plot created for visit {visit}**"
@@ -705,7 +706,8 @@ def plot_2d_callback(event=None):
 - subtract_sky: {subtract_sky}, overlay: {overlay}, scale: {scale_algo}
 """
     except Exception as e:
-        pane_2d.clear()
+        error_pane = pn.pane.Markdown(f"**Error:** {e}")
+        pane_2d.objects = [error_pane]
         pn.state.notifications.error(f"Failed to show 2D image: {e}")
         logger.error(f"Failed to show 2D image: {e}")
         status_text.object = "**Error creating 2D plot**"
@@ -764,9 +766,9 @@ def plot_1d_callback(event=None):
             fiber_ids=fibers,
         )
 
-        # Clear spinner and show plot
-        hide_loading_spinner()
-        pane_1d.append(pn.pane.Bokeh(p_fig1d, sizing_mode="scale_width"))
+        # Replace spinner with plot in one atomic operation
+        bokeh_pane = pn.pane.Bokeh(p_fig1d, sizing_mode="scale_width")
+        pane_1d.objects = [bokeh_pane]
         status_text.object = f"**1D plot created for visit {visit}**"
         pn.state.notifications.success("1D plot created")
 
@@ -775,7 +777,8 @@ def plot_1d_callback(event=None):
 - fibers: {len(fibers)} selected ({fibers[:10]}{'...' if len(fibers) > 10 else ''})
 """
     except Exception as e:
-        pane_1d.clear()
+        error_pane = pn.pane.Markdown(f"**Error:** {e}")
+        pane_1d.objects = [error_pane]
         pn.state.notifications.error(f"Failed to show 1D spectra: {e}")
         logger.error(f"Failed to show 1D spectra: {e}")
         status_text.object = "**Error creating 1D plot**"
@@ -830,9 +833,9 @@ def plot_1d_image_callback(event=None):
             scale_algo=scale_algo,
         )
 
-        # Clear spinner and display HoloViews image
-        hide_loading_spinner()
-        pane_1d_image.append(pn.pane.HoloViews(hv_img, backend="bokeh"))
+        # Replace spinner with image in one atomic operation
+        hv_pane = pn.pane.HoloViews(hv_img, backend="bokeh")
+        pane_1d_image.objects = [hv_pane]
         status_text.object = f"**1D spectra image created for visit {visit}**"
         pn.state.notifications.success("1D spectra image created")
 
@@ -843,7 +846,8 @@ def plot_1d_image_callback(event=None):
 - scale: {scale_algo}
 """
     except Exception as e:
-        pane_1d_image.clear()
+        error_pane = pn.pane.Markdown(f"**Error:** {e}")
+        pane_1d_image.objects = [error_pane]
         pn.state.notifications.error(f"Failed to create 1D spectra image: {e}")
         logger.error(f"Failed to create 1D spectra image: {e}")
         status_text.object = "**Error creating 1D spectra image**"
@@ -869,9 +873,9 @@ def reset_app(event=None):
     Disables plot buttons and re-enables Load Data button.
     Clears OB Code options and all selections.
     """
-    pane_2d.clear()
-    pane_1d.clear()  # Clear Column instead of setting object to None
-    pane_1d_image.clear()
+    pane_2d.objects = []
+    pane_1d.objects = []
+    pane_1d_image.objects = []
     log_md.object = "**Reset.**"
     status_text.object = "**Ready**"
 
