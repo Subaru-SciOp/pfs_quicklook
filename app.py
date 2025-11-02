@@ -85,8 +85,8 @@ def should_skip_update(state):
 # --- Widgets ---
 spectro_cbg = pn.widgets.CheckButtonGroup(
     name="Spectrograph",
-    options=[1, 2, 3, 4],
-    value=[1, 2, 3, 4],
+    options=[f"SM{i}" for i in range(1, 5)],
+    value=[f"SM{i}" for i in range(1, 5)],
     button_type="default",
     button_style="outline",
     sizing_mode="stretch_width",
@@ -464,11 +464,27 @@ def plot_2d_callback(event=None):
     butler_cache = state["butler_cache"]
     logger.info("Using Butler cache from session state (optimization)")
 
-    spectros = (
+    spectro_selection = (
         spectro_cbg.value
         if isinstance(spectro_cbg.value, list)
         else [spectro_cbg.value]
     )
+    spectros = []
+    for item in spectro_selection:
+        label = str(item).strip()
+        if not label.startswith("SM"):
+            logger.warning(f"Ignoring unexpected spectrograph label: {item}")
+            continue
+
+        try:
+            spectros.append(int(label[2:]))
+        except ValueError:
+            logger.warning(f"Ignoring malformed spectrograph label: {item}")
+
+    if not spectros:
+        pn.state.notifications.warning("Select at least one spectrograph.")
+        toggle_buttons(disabled=False, include_load=True)
+        return
     # Always attempt to load all 4 arms
     all_arms = ["b", "r", "n", "m"]
     fibers = fibers_mc.value if fibers_mc.value else None
@@ -1144,24 +1160,27 @@ fibers_mc.param.watch(on_fiber_change, "value")
 
 # --- Layout ---
 sidebar = pn.Column(
-    "#### Spectrograph",
-    spectro_cbg,
-    pn.layout.Divider(),
-    visit_mc,
     btn_load_data,
-    status_text,
+    visit_mc,
+    pn.layout.Divider(),
+    spectro_cbg,
+    pn.Column(btn_plot_2d),
+    pn.layout.Divider(),
+    pn.Column(btn_plot_1d_image),
     pn.layout.Divider(),
     btn_clear_selection,
     obcode_mc,
     fibers_mc,
+    pn.Column(btn_plot_1d),
     pn.layout.Divider(),
-    "#### Rendering Options",
-    use_fast_preview_chk,
+    pn.Column(btn_reset),
     pn.layout.Divider(),
-    pn.Column(btn_plot_2d, btn_plot_1d_image, btn_plot_1d, btn_reset),
+    status_text,
     f"**Base collection:** {BASE_COLLECTION}<br>"
     f"**Datastore:** {DATASTORE}<br>"
     f"**Observation Date (UTC):** {OBSDATE_UTC}",
+    "#### Rendering Options",
+    use_fast_preview_chk,
     min_width=280,
     max_width=400,
     sizing_mode="stretch_width",
