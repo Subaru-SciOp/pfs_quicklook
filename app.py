@@ -471,10 +471,15 @@ def plot_2d_callback(event=None):
     )
     spectros = []
     for item in spectro_selection:
-        try:
-            spectros.append(int(str(item).lstrip("SM")))
-        except ValueError:
+        label = str(item).strip()
+        if not label.startswith("SM"):
             logger.warning(f"Ignoring unexpected spectrograph label: {item}")
+            continue
+
+        try:
+            spectros.append(int(label[2:]))
+        except ValueError:
+            logger.warning(f"Ignoring malformed spectrograph label: {item}")
 
     if not spectros:
         pn.state.notifications.warning("Select at least one spectrograph.")
@@ -1158,7 +1163,6 @@ sidebar = pn.Column(
     btn_load_data,
     visit_mc,
     pn.layout.Divider(),
-    # "#### Spectrograph",
     spectro_cbg,
     pn.Column(btn_plot_2d),
     pn.layout.Divider(),
