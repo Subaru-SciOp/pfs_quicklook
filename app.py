@@ -116,7 +116,7 @@ fibers_mc = pn.widgets.MultiChoice(
 btn_clear_selection = pn.widgets.Button(
     name="Clear Selection",
     button_type="default",
-    width=120,
+    min_width=140,
     sizing_mode="fixed",
 )
 
@@ -132,9 +132,15 @@ use_fast_preview_chk = pn.widgets.Checkbox(
     value=True,  # Default to fast preview for better performance
 )
 
-btn_load_data = pn.widgets.Button(name="Load Data", button_type="primary")
+btn_load_data = pn.widgets.Button(name="Load Visit", button_type="primary")
 btn_plot_2d = pn.widgets.Button(
     name="Show 2D Images",
+    button_type="primary",
+    disabled=True,
+    sizing_mode="stretch_width",
+)
+btn_plot_1d_image = pn.widgets.Button(
+    name="Show 1D Spectra Image",
     button_type="primary",
     disabled=True,
     sizing_mode="stretch_width",
@@ -143,12 +149,7 @@ btn_plot_1d = pn.widgets.Button(
     name="Show 1D Spectra",
     button_type="primary",
     disabled=True,
-    sizing_mode="stretch_width",
-)
-btn_plot_1d_image = pn.widgets.Button(
-    name="Show 1D Image",
-    button_type="primary",
-    disabled=True,
+    min_width=140,
     sizing_mode="stretch_width",
 )
 btn_reset = pn.widgets.Button(name="Reset", sizing_mode="stretch_width")
@@ -1160,18 +1161,18 @@ fibers_mc.param.watch(on_fiber_change, "value")
 
 # --- Layout ---
 sidebar = pn.Column(
-    btn_load_data,
     visit_mc,
+    btn_load_data,
     pn.layout.Divider(),
     spectro_cbg,
     pn.Column(btn_plot_2d),
     pn.layout.Divider(),
     pn.Column(btn_plot_1d_image),
     pn.layout.Divider(),
-    btn_clear_selection,
+    # btn_clear_selection,
     obcode_mc,
     fibers_mc,
-    pn.Column(btn_plot_1d),
+    pn.Row(btn_plot_1d, btn_clear_selection),
     pn.layout.Divider(),
     pn.Column(btn_reset),
     pn.layout.Divider(),
