@@ -1206,7 +1206,8 @@ def on_session_created():
 
     # Start periodic callback to check for results (every 500ms)
     # The callback will automatically stop when it returns False
-    pn.state.add_periodic_callback(check_visit_discovery, period=500)
+    # Use curdoc for session-specific callback (auto-cleanup on session end)
+    pn.state.curdoc.add_periodic_callback(check_visit_discovery, period=500)
 
     # If auto-refresh is enabled, set up periodic refresh
     if refresh_interval > 0:
@@ -1214,7 +1215,8 @@ def on_session_created():
         logger.info(
             f"Auto-refresh enabled: visit list will update every {refresh_interval} seconds"
         )
-        pn.state.add_periodic_callback(
+        # Use curdoc for session-specific callback (auto-cleanup on session end)
+        pn.state.curdoc.add_periodic_callback(
             trigger_visit_refresh, period=refresh_interval_ms
         )
 
