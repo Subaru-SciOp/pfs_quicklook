@@ -8,8 +8,9 @@ import panel as pn
 from joblib import Parallel, delayed
 from loguru import logger
 
-# Global flag to track if periodic callbacks are registered (server-level)
+# Global flag and lock to track if periodic callbacks are registered (server-level)
 _periodic_callbacks_registered = False
+_periodic_callbacks_lock = threading.Lock()
 
 from quicklook_core import (
     ARM_NAMES,
@@ -1209,32 +1210,38 @@ def on_session_created():
     )
     thread.start()
 
-    # Register periodic callbacks only once at server level
-    # Multiple sessions will share these callbacks, but each callback
-    # checks session-specific state, so this is safe
+    # Register periodic callbacks only once at server level (thread-safe)
+    # IMPORTANT: These callbacks are shared across ALL sessions. Each callback uses
+    # get_session_state() which returns the state of whichever session is "current"
+    # when the callback fires. In multi-session scenarios, only one session's state
+    # is checked/updated per callback invocation, which is a known limitation.
+    #
+    # NOTE: The refresh_interval is read only once during first registration.
+    # Changes to VISIT_REFRESH_INTERVAL in .env require server restart to take effect.
     global _periodic_callbacks_registered
-    if not _periodic_callbacks_registered:
-        # Start periodic callback to check for results (every 500ms)
-        # The callback will automatically stop when it returns False
-        pn.state.add_periodic_callback(check_visit_discovery, period=500)
+    with _periodic_callbacks_lock:
+        if not _periodic_callbacks_registered:
+            # Start periodic callback to check for results (every 500ms)
+            # The callback will automatically stop when it returns False
+            pn.state.add_periodic_callback(check_visit_discovery, period=500)
 
-        # If auto-refresh is enabled, set up periodic refresh
-        if refresh_interval > 0:
-            refresh_interval_ms = (
-                refresh_interval * 1000
-            )  # Convert seconds to milliseconds
+            # If auto-refresh is enabled, set up periodic refresh
+            if refresh_interval > 0:
+                refresh_interval_ms = (
+                    refresh_interval * 1000
+                )  # Convert seconds to milliseconds
+                logger.info(
+                    f"Auto-refresh enabled: visit list will update every {refresh_interval} seconds"
+                )
+                pn.state.add_periodic_callback(
+                    trigger_visit_refresh, period=refresh_interval_ms
+                )
+
+            # Mark callbacks as registered globally
+            _periodic_callbacks_registered = True
             logger.info(
-                f"Auto-refresh enabled: visit list will update every {refresh_interval} seconds"
+                "Periodic callbacks registered (server-level, shared across sessions)"
             )
-            pn.state.add_periodic_callback(
-                trigger_visit_refresh, period=refresh_interval_ms
-            )
-
-        # Mark callbacks as registered globally
-        _periodic_callbacks_registered = True
-        logger.info(
-            "Periodic callbacks registered (server-level, shared across sessions)"
-        )
 
 
 # Register the callback to run on each session start
