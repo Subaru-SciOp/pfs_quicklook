@@ -295,6 +295,7 @@ def load_data_callback(event=None):
     -----
     Updates session state with loaded data and enables plot buttons.
     Shows notifications on success or failure.
+    Clears existing plots from tabs when loading a new visit.
     """
     if not visit_mc.value:
         pn.state.notifications.warning("Select at least one visit.")
@@ -305,6 +306,11 @@ def load_data_callback(event=None):
 
     # Disable all buttons during loading
     toggle_buttons(disabled=True, include_load=True)
+
+    # Clear existing plots when loading a new visit
+    pane_2d.objects = []
+    pane_1d.objects = []
+    pane_1d_image.objects = []
 
     try:
         status_text.object = f"**Loading visit {visit}...**"
