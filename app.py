@@ -189,9 +189,7 @@ status_text = pn.pane.Markdown("**Ready**", sizing_mode="stretch_width", height=
 
 # Configuration info text (will be updated on session start)
 config_info_text = pn.pane.Markdown(
-    f"**Base collection:** {BASE_COLLECTION}<br>"
-    f"**Datastore:** {DATASTORE}<br>"
-    f"**Observation Date (UTC):** {OBSDATE_UTC}",
+    "**Loading configuration...**",
     sizing_mode="stretch_width",
 )
 
