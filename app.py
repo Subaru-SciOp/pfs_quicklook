@@ -1142,7 +1142,9 @@ def trigger_visit_refresh():
         )
         thread.start()
 
-        pn.state.add_periodic_callback(check_visit_discovery, period=500)
+        # Note: check_visit_discovery is already registered as a periodic callback
+        # in on_session_created(). It will automatically check this state and
+        # stop when the discovery is complete (returns False).
 
 
 # --- Session initialization ---
