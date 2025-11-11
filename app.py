@@ -13,6 +13,7 @@ from quicklook_core import (
     BASE_COLLECTION,
     DATASTORE,
     OBSDATE_UTC,
+    VISIT_REFRESH_INTERVAL,
     build_1d_bokeh_figure_single_visit,
     build_1d_spectra_as_image,
     build_2d_arrays_multi_arm,
@@ -104,7 +105,7 @@ def get_config():
 
     # If config is not initialized, use global defaults
     if config["datastore"] is None:
-        return DATASTORE, BASE_COLLECTION, OBSDATE_UTC, 300
+        return DATASTORE, BASE_COLLECTION, OBSDATE_UTC, VISIT_REFRESH_INTERVAL
 
     return (
         config["datastore"],
