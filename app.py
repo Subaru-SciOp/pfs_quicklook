@@ -191,9 +191,9 @@ btn_reset = pn.widgets.Button(name="Reset", sizing_mode="stretch_width")
 
 status_text = pn.pane.Markdown("**Ready**", sizing_mode="stretch_width", height=60)
 
-# Configuration info text (will be updated on session start)
+# Configuration info text (will be populated when session starts)
 config_info_text = pn.pane.Markdown(
-    "**Loading configuration...**",
+    "_Configuration will be displayed when session starts._",
     sizing_mode="stretch_width",
 )
 
@@ -1183,8 +1183,8 @@ def on_session_created():
 
     # Update sidebar info text with session-specific configuration
     config_info_text.object = (
-        f"**Base collection:** {base_collection}<br>"
         f"**Datastore:** {datastore}<br>"
+        f"**Base collection:** {base_collection}<br>"
         f"**Observation Date (UTC):** {obsdate_utc}"
     )
 
