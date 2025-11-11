@@ -8,6 +8,9 @@ import panel as pn
 from joblib import Parallel, delayed
 from loguru import logger
 
+# Global flag to track if periodic callbacks are registered (server-level)
+_periodic_callbacks_registered = False
+
 from quicklook_core import (
     ARM_NAMES,
     BASE_COLLECTION,
@@ -1204,20 +1207,31 @@ def on_session_created():
     )
     thread.start()
 
-    # Start periodic callback to check for results (every 500ms)
-    # The callback will automatically stop when it returns False
-    # Use curdoc for session-specific callback (auto-cleanup on session end)
-    pn.state.curdoc.add_periodic_callback(check_visit_discovery, period=500)
+    # Register periodic callbacks only once at server level
+    # Multiple sessions will share these callbacks, but each callback
+    # checks session-specific state, so this is safe
+    global _periodic_callbacks_registered
+    if not _periodic_callbacks_registered:
+        # Start periodic callback to check for results (every 500ms)
+        # The callback will automatically stop when it returns False
+        pn.state.add_periodic_callback(check_visit_discovery, period=500)
 
-    # If auto-refresh is enabled, set up periodic refresh
-    if refresh_interval > 0:
-        refresh_interval_ms = refresh_interval * 1000  # Convert seconds to milliseconds
+        # If auto-refresh is enabled, set up periodic refresh
+        if refresh_interval > 0:
+            refresh_interval_ms = (
+                refresh_interval * 1000
+            )  # Convert seconds to milliseconds
+            logger.info(
+                f"Auto-refresh enabled: visit list will update every {refresh_interval} seconds"
+            )
+            pn.state.add_periodic_callback(
+                trigger_visit_refresh, period=refresh_interval_ms
+            )
+
+        # Mark callbacks as registered globally
+        _periodic_callbacks_registered = True
         logger.info(
-            f"Auto-refresh enabled: visit list will update every {refresh_interval} seconds"
-        )
-        # Use curdoc for session-specific callback (auto-cleanup on session end)
-        pn.state.curdoc.add_periodic_callback(
-            trigger_visit_refresh, period=refresh_interval_ms
+            "Periodic callbacks registered (server-level, shared across sessions)"
         )
 
 
