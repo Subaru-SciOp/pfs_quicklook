@@ -8,11 +8,16 @@ import panel as pn
 from joblib import Parallel, delayed
 from loguru import logger
 
+# Global flag and lock to track if periodic callbacks are registered (server-level)
+_periodic_callbacks_registered = False
+_periodic_callbacks_lock = threading.Lock()
+
 from quicklook_core import (
     ARM_NAMES,
     BASE_COLLECTION,
     DATASTORE,
     OBSDATE_UTC,
+    VISIT_REFRESH_INTERVAL,
     build_1d_bokeh_figure_single_visit,
     build_1d_spectra_as_image,
     build_2d_arrays_multi_arm,
@@ -57,6 +62,12 @@ def get_session_state():
             "visit_discovery": {"status": None, "result": None, "error": None},
             "visit_cache": {},  # {visit_id: obsdate_utc} - caches validated visits
             "butler_cache": {},  # {(datastore, collection, visit): Butler} - caches Butler instances
+            "config": {  # Session-specific configuration
+                "datastore": None,
+                "base_collection": None,
+                "obsdate_utc": None,
+                "refresh_interval": None,
+            },
         }
 
     return ctx.app_state
@@ -80,6 +91,32 @@ def should_skip_update(state):
         True if update should be skipped
     """
     return state["programmatic_update"] or not state["visit_data"]["loaded"]
+
+
+def get_config():
+    """Get session-specific configuration
+
+    Returns configuration from session state. If not initialized,
+    returns default global values.
+
+    Returns
+    -------
+    tuple
+        (datastore, base_collection, obsdate_utc, refresh_interval)
+    """
+    state = get_session_state()
+    config = state["config"]
+
+    # If config is not initialized, use global defaults
+    if config["datastore"] is None:
+        return DATASTORE, BASE_COLLECTION, OBSDATE_UTC, VISIT_REFRESH_INTERVAL
+
+    return (
+        config["datastore"],
+        config["base_collection"],
+        config["obsdate_utc"],
+        config["refresh_interval"],
+    )
 
 
 # --- Widgets ---
@@ -155,6 +192,12 @@ btn_plot_1d = pn.widgets.Button(
 btn_reset = pn.widgets.Button(name="Reset", sizing_mode="stretch_width")
 
 status_text = pn.pane.Markdown("**Ready**", sizing_mode="stretch_width", height=60)
+
+# Configuration info text (will be populated when session starts)
+config_info_text = pn.pane.Markdown(
+    "_Configuration will be displayed when session starts._",
+    sizing_mode="stretch_width",
+)
 
 # --- Output panes ---
 pane_2d = pn.Column(sizing_mode="scale_width")
@@ -265,8 +308,9 @@ def load_data_callback(event=None):
 
     try:
         status_text.object = f"**Loading visit {visit}...**"
+        datastore, base_collection, _, _ = get_config()
         pfsConfig, obcode_to_fibers, fiber_to_obcode = load_visit_data(
-            DATASTORE, BASE_COLLECTION, visit
+            datastore, base_collection, visit
         )
 
         # Update session state
@@ -452,6 +496,9 @@ def plot_2d_callback(event=None):
 
     visit = state["visit_data"]["visit"]
 
+    # Get session configuration
+    datastore, base_collection, _, _ = get_config()
+
     # Get pre-loaded pfsConfig from session state (already loaded in load_data_callback)
     # This avoids redundant Butler.get() calls for each arm (saves ~0.177s × 15 arms = ~2.7s)
     pfs_config_shared = state["visit_data"]["pfsConfig"]
@@ -516,8 +563,8 @@ def plot_2d_callback(event=None):
             logger.info(f"Building 2D arrays for SM{spectro} with all arms {all_arms}")
             try:
                 array_results = build_2d_arrays_multi_arm(
-                    datastore=DATASTORE,
-                    base_collection=BASE_COLLECTION,
+                    datastore=datastore,
+                    base_collection=base_collection,
                     visit=visit,
                     spectrograph=spectro,
                     arms=all_arms,
@@ -775,10 +822,13 @@ def plot_1d_callback(event=None):
 
         status_text.object = "**Creating 1D plot...**"
 
+        # Get session configuration
+        datastore, base_collection, _, _ = get_config()
+
         # Use Bokeh for rendering
         p_fig1d = build_1d_bokeh_figure_single_visit(
-            datastore=DATASTORE,
-            base_collection=BASE_COLLECTION,
+            datastore=datastore,
+            base_collection=base_collection,
             visit=visit,
             fiber_ids=fibers,
         )
@@ -841,10 +891,13 @@ def plot_1d_image_callback(event=None):
 
         status_text.object = "**Creating 1D spectra image...**"
 
+        # Get session configuration
+        datastore, base_collection, _, _ = get_config()
+
         # Build 1D spectra as 2D image
         hv_img = build_1d_spectra_as_image(
-            datastore=DATASTORE,
-            base_collection=BASE_COLLECTION,
+            datastore=datastore,
+            base_collection=base_collection,
             visit=visit,
             fiber_ids=fibers,
             scale_algo=scale_algo,
@@ -933,7 +986,9 @@ def get_visit_discovery_state():
     return state["visit_discovery"]
 
 
-def discover_visits_worker(state_dict, visit_cache):
+def discover_visits_worker(
+    state_dict, visit_cache, datastore, base_collection, obsdate_utc
+):
     """Worker function that runs in background thread
 
     Parameters
@@ -942,16 +997,22 @@ def discover_visits_worker(state_dict, visit_cache):
         Dictionary reference to store results (passed from main thread)
     visit_cache : dict
         Dictionary of {visit_id: obsdate_utc} for previously validated visits
+    datastore : str
+        Path to Butler datastore
+    base_collection : str
+        Base collection name
+    obsdate_utc : str
+        Observation date in UTC (YYYY-MM-DD format)
     """
     try:
-        logger.info(f"Starting visit discovery for date: {OBSDATE_UTC}")
+        logger.info(f"Starting visit discovery for date: {obsdate_utc}")
         state_dict["status"] = "running"
 
         # Discover visits with caching (this is the slow part)
         discovered_visits, updated_cache = discover_visits(
-            DATASTORE,
-            BASE_COLLECTION,
-            OBSDATE_UTC,
+            datastore,
+            base_collection,
+            obsdate_utc,
             cached_visits=visit_cache,
         )
 
@@ -1070,15 +1131,22 @@ def trigger_visit_refresh():
         logger.info("Auto-refreshing visit list...")
         pn.state.notifications.info("Updating visit list...", duration=3000)
 
+        # Get session configuration
+        datastore, base_collection, obsdate_utc, _ = get_config()
+
         # Pass current cache to worker
         visit_cache = session_state.get("visit_cache", {})
 
         thread = threading.Thread(
-            target=discover_visits_worker, args=(state, visit_cache), daemon=True
+            target=discover_visits_worker,
+            args=(state, visit_cache, datastore, base_collection, obsdate_utc),
+            daemon=True,
         )
         thread.start()
 
-        pn.state.add_periodic_callback(check_visit_discovery, period=500)
+        # Note: check_visit_discovery is already registered as a periodic callback
+        # in on_session_created(). It will automatically check this state and
+        # stop when the discovery is complete (returns False).
 
 
 # --- Session initialization ---
@@ -1097,7 +1165,7 @@ def on_session_created():
         f"Session started with DATASTORE={datastore}, BASE_COLLECTION={base_collection}, "
         f"OBSDATE_UTC={obsdate_utc}, VISIT_REFRESH_INTERVAL={refresh_interval}s"
     )
-    pn.state.notifications.info("Configuration loaded from .env file")
+    pn.state.notifications.info("Configuration reloaded from .env file", duration=3000)
 
     # Notify user about rendering mode options
     pn.state.notifications.info(
@@ -1106,9 +1174,21 @@ def on_session_created():
         duration=8000,  # Show for 8 seconds
     )
 
-    # Initialize session state (automatically done by get_session_state())
-    # This call ensures the state is initialized for this session
+    # Initialize session state and store configuration
     session_state = get_session_state()
+    session_state["config"] = {
+        "datastore": datastore,
+        "base_collection": base_collection,
+        "obsdate_utc": obsdate_utc,
+        "refresh_interval": refresh_interval,
+    }
+
+    # Update sidebar info text with session-specific configuration
+    config_info_text.object = (
+        f"**Datastore:** {datastore}<br>"
+        f"**Base collection:** {base_collection}<br>"
+        f"**Observation Date (UTC):** {obsdate_utc}"
+    )
 
     # Reset visit widget to loading state
     visit_mc.placeholder = "Loading visits..."
@@ -1125,23 +1205,47 @@ def on_session_created():
     # Start initial visit discovery in background thread
     logger.info("Starting initial visit discovery for this session...")
     thread = threading.Thread(
-        target=discover_visits_worker, args=(state, visit_cache), daemon=True
+        target=discover_visits_worker,
+        args=(state, visit_cache, datastore, base_collection, obsdate_utc),
+        daemon=True,
     )
     thread.start()
 
-    # Start periodic callback to check for results (every 500ms)
-    # The callback will automatically stop when it returns False
-    pn.state.add_periodic_callback(check_visit_discovery, period=500)
+    # Register periodic callbacks only once at server level (thread-safe)
+    # IMPORTANT: These callbacks are shared across ALL sessions. Each callback uses
+    # get_session_state() which returns the state of whichever session is "current"
+    # when the callback fires. In multi-session scenarios, only one session's state
+    # is checked/updated per callback invocation, which is a known limitation.
+    #
+    # NOTE: The refresh_interval used for the periodic callback period is read only once
+    # during first registration. Changes to VISIT_REFRESH_INTERVAL in .env will only
+    # affect the callback period after a server restart. However, visit discovery itself
+    # uses session-specific config values from get_config(), so each session can have
+    # different datastore/collection/obsdate values that reload properly on browser refresh.
+    global _periodic_callbacks_registered
+    with _periodic_callbacks_lock:
+        if not _periodic_callbacks_registered:
+            # Start periodic callback to check for results (every 500ms)
+            # The callback will automatically stop when it returns False
+            pn.state.add_periodic_callback(check_visit_discovery, period=500)
 
-    # If auto-refresh is enabled, set up periodic refresh
-    if refresh_interval > 0:
-        refresh_interval_ms = refresh_interval * 1000  # Convert seconds to milliseconds
-        logger.info(
-            f"Auto-refresh enabled: visit list will update every {refresh_interval} seconds"
-        )
-        pn.state.add_periodic_callback(
-            trigger_visit_refresh, period=refresh_interval_ms
-        )
+            # If auto-refresh is enabled, set up periodic refresh
+            if refresh_interval > 0:
+                refresh_interval_ms = (
+                    refresh_interval * 1000
+                )  # Convert seconds to milliseconds
+                logger.info(
+                    f"Auto-refresh enabled: visit list will update every {refresh_interval} seconds"
+                )
+                pn.state.add_periodic_callback(
+                    trigger_visit_refresh, period=refresh_interval_ms
+                )
+
+            # Mark callbacks as registered globally
+            _periodic_callbacks_registered = True
+            logger.info(
+                "Periodic callbacks registered (server-level, shared across sessions)"
+            )
 
 
 # Register the callback to run on each session start
@@ -1177,9 +1281,7 @@ sidebar = pn.Column(
     pn.Column(btn_reset),
     pn.layout.Divider(),
     status_text,
-    f"**Base collection:** {BASE_COLLECTION}<br>"
-    f"**Datastore:** {DATASTORE}<br>"
-    f"**Observation Date (UTC):** {OBSDATE_UTC}",
+    config_info_text,
     "#### Rendering Options",
     use_fast_preview_chk,
     min_width=280,
