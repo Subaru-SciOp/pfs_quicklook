@@ -1216,8 +1216,11 @@ def on_session_created():
     # when the callback fires. In multi-session scenarios, only one session's state
     # is checked/updated per callback invocation, which is a known limitation.
     #
-    # NOTE: The refresh_interval is read only once during first registration.
-    # Changes to VISIT_REFRESH_INTERVAL in .env require server restart to take effect.
+    # NOTE: The refresh_interval used for the periodic callback period is read only once
+    # during first registration. Changes to VISIT_REFRESH_INTERVAL in .env will only
+    # affect the callback period after a server restart. However, visit discovery itself
+    # uses session-specific config values from get_config(), so each session can have
+    # different datastore/collection/obsdate values that reload properly on browser refresh.
     global _periodic_callbacks_registered
     with _periodic_callbacks_lock:
         if not _periodic_callbacks_registered:
