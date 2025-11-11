@@ -95,6 +95,7 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
 
 1. **Load Data** (`load_data_callback`):
    - Validates visit selection
+   - Clears existing plots from all tabs (2D Images, 1D Image, 1D Spectra)
    - Calls `load_visit_data()` to retrieve pfsConfig
    - Creates bidirectional OB Code ↔ Fiber ID mappings
    - Populates OB Code options
@@ -276,6 +277,7 @@ pfs_quicklook/
 #### app.py Callbacks
 
 **`load_data_callback()`**:
+- Clears existing plots from all tabs
 - Loads visit data and populates OB Code options
 - Updates session state with pfsConfig and mappings
 - Enables plot buttons
