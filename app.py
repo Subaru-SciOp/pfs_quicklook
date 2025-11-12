@@ -126,7 +126,6 @@ spectro_cbg = pn.widgets.CheckButtonGroup(
     value=[f"SM{i}" for i in range(1, 5)],
     button_type="primary",
     button_style="outline",
-    # button_style="solid",
     sizing_mode="stretch_width",
     stylesheets=[
         """
