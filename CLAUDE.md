@@ -812,15 +812,32 @@ New implementation:
 ```python
 # Fast filesystem-based date extraction
 visit_path = os.path.join(datastore, base_collection, str(visit))
-subdirs = [d for d in os.listdir(visit_path)
-          if os.path.isdir(os.path.join(visit_path, d))
-          and not d.endswith('.dmQa')]
-timestamp_dir = subdirs[0]  # e.g., "20250521T111558Z"
+
+# Filter subdirectories to only include valid timestamp directories
+subdirs = [
+    d for d in os.listdir(visit_path)
+    if (
+        os.path.isdir(os.path.join(visit_path, d))
+        and not d.startswith('.')  # Exclude hidden directories
+        and not d.endswith('.dmQa')  # Skip QA directories
+        and len(d) >= 15  # Full format is YYYYMMDDThhmmssZ (16 chars)
+        and d[8] == 'T'  # T at position 8
+        and d[:8].isdigit()  # YYYYMMDD is numeric
+        and d[9:15].isdigit()  # hhmmss is numeric
+    )
+]
+
+if not subdirs:
+    logger.debug(f"No timestamp directories found in {visit_path}")
+    return (visit, None)
+
+# Sort and use most recent timestamp (last alphabetically)
+subdirs.sort()
+timestamp_dir = subdirs[-1]  # e.g., "20250521T111558Z"
 
 # String slicing for maximum performance (10-100x faster than datetime.strptime)
-if len(timestamp_dir) >= 8 and "T" in timestamp_dir and timestamp_dir[:8].isdigit():
-    date_str = timestamp_dir[:8]  # "20250521"
-    obstime = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"  # "2025-05-21"
+date_str = timestamp_dir[:8]  # "20250521"
+obstime = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"  # "2025-05-21"
 ```
 
 **Performance Impact:**

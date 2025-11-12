@@ -302,44 +302,44 @@ def discover_visits(
                     logger.debug(f"Visit path does not exist: {visit_path}")
                     return (visit, None)
 
+                # List subdirectories matching timestamp pattern (YYYYMMDDThhmmssZ)
+                # Filter upfront to only include valid timestamp directories
                 subdirs = [
                     d
                     for d in os.listdir(visit_path)
-                    if os.path.isdir(os.path.join(visit_path, d))
-                    and not d.endswith(".dmQa")
-                ]  # Skip QA directories
+                    if (
+                        os.path.isdir(os.path.join(visit_path, d))
+                        and not d.startswith(".")  # Exclude hidden directories
+                        and not d.endswith(".dmQa")  # Skip QA directories
+                        and len(d) >= 15  # Full format is YYYYMMDDThhmmssZ (16 chars)
+                        and d[8] == "T"  # T at position 8
+                        and d[:8].isdigit()  # YYYYMMDD is numeric
+                        and d[9:15].isdigit()  # hhmmss is numeric
+                    )
+                ]
 
                 if not subdirs:
                     logger.debug(f"No timestamp directories found in {visit_path}")
                     return (visit, None)
 
-                # Get the first timestamp directory (usually only one per visit)
-                timestamp_dir = subdirs[0]
+                # Sort subdirectories to ensure deterministic selection
+                # Use the most recent timestamp (last alphabetically)
+                subdirs.sort()
+                timestamp_dir = subdirs[-1]
 
                 # Parse date from timestamp (format: YYYYMMDDThhmmssZ)
                 # Extract YYYY-MM-DD from YYYYMMDDThhmmssZ
                 # Use direct string slicing for maximum performance (~100x faster than datetime.strptime)
-                if (
-                    len(timestamp_dir) >= 8
-                    and "T" in timestamp_dir
-                    and timestamp_dir[:8].isdigit()
-                ):
-                    date_str = timestamp_dir[:8]  # YYYYMMDD
-                    # Convert to YYYY-MM-DD format
-                    obstime = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
-                    logger.debug(
-                        f"Visit {visit} observation date: {obstime} (from {timestamp_dir})"
-                    )
+                date_str = timestamp_dir[:8]  # YYYYMMDD
+                # Convert to YYYY-MM-DD format
+                obstime = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
+                logger.debug(
+                    f"Visit {visit} observation date: {obstime} (from {timestamp_dir})"
+                )
 
-                    if obstime == obsdate_utc:
-                        logger.debug(
-                            f"Visit {visit} date {obstime} matches {obsdate_utc}"
-                        )
-                        return (visit, obsdate_utc)
-                else:
-                    logger.warning(
-                        f"Invalid timestamp format in {visit_path}: {timestamp_dir}"
-                    )
+                if obstime == obsdate_utc:
+                    logger.debug(f"Visit {visit} date {obstime} matches {obsdate_utc}")
+                    return (visit, obsdate_utc)
 
                 return (visit, None)
             except Exception as e:
