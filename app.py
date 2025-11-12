@@ -137,7 +137,7 @@ spectro_cbg = pn.widgets.CheckButtonGroup(
 )
 
 visit_mc = pn.widgets.MultiChoice(
-    name="Visit",
+    # name="Visit",
     options=[],
     max_items=1,  # temporary limit to single visit mode
     placeholder="Loading visits...",  # Initial state shows loading
