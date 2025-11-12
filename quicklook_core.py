@@ -286,18 +286,61 @@ def discover_visits(
             f"Total visits: {len(all_visits)}, cached: {len(cached_valid_visits)}, new: {len(new_visits)}"
         )
 
-        # Filter new visits by observation date using parallel processing
+        # Filter new visits by observation date by parsing directory names
         def check_visit_date(visit):
-            """Check if visit matches the observation date"""
+            """Check if visit matches the observation date by parsing directory structure
+
+            The data is stored like {datastore}/{base_collection}/{visit}/YYYYMMDDThhmmssZ
+            We can extract the date directly from the timestamp directory name instead
+            of calling Butler, which is much faster (~100x speedup).
+            """
             try:
-                b = get_butler(datastore, base_collection, visit)
-                obstime = b.get(
-                    "pfsConfig", visit=visit, spectrograph=1, arm="b"
-                ).obstime
-                logger.debug(f"Visit {visit} observation date: {obstime}")
-                if obstime.startswith(obsdate_utc):
+                visit_path = os.path.join(datastore, base_collection, str(visit))
+
+                # List subdirectories (timestamp directories like "20250521T111558Z")
+                if not os.path.exists(visit_path):
+                    logger.debug(f"Visit path does not exist: {visit_path}")
+                    return (visit, None)
+
+                # List subdirectories matching timestamp pattern (YYYYMMDDThhmmssZ)
+                # Filter upfront to only include valid timestamp directories
+                subdirs = [
+                    d
+                    for d in os.listdir(visit_path)
+                    if (
+                        os.path.isdir(os.path.join(visit_path, d))
+                        and not d.startswith(".")  # Exclude hidden directories
+                        and not d.endswith(".dmQa")  # Skip QA directories
+                        and len(d) >= 15  # Full format is YYYYMMDDThhmmssZ (16 chars)
+                        and d[8] == "T"  # T at position 8
+                        and d[:8].isdigit()  # YYYYMMDD is numeric
+                        and d[9:15].isdigit()  # hhmmss is numeric
+                    )
+                ]
+
+                if not subdirs:
+                    logger.debug(f"No timestamp directories found in {visit_path}")
+                    return (visit, None)
+
+                # Sort subdirectories to ensure deterministic selection
+                # Use the most recent timestamp (last alphabetically)
+                subdirs.sort()
+                timestamp_dir = subdirs[-1]
+
+                # Parse date from timestamp (format: YYYYMMDDThhmmssZ)
+                # Extract YYYY-MM-DD from YYYYMMDDThhmmssZ
+                # Use direct string slicing for maximum performance (~100x faster than datetime.strptime)
+                date_str = timestamp_dir[:8]  # YYYYMMDD
+                # Convert to YYYY-MM-DD format
+                obstime = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
+                logger.debug(
+                    f"Visit {visit} observation date: {obstime} (from {timestamp_dir})"
+                )
+
+                if obstime == obsdate_utc:
                     logger.debug(f"Visit {visit} date {obstime} matches {obsdate_utc}")
                     return (visit, obsdate_utc)
+
                 return (visit, None)
             except Exception as e:
                 logger.warning(f"Failed to check visit {visit}: {e}")
@@ -471,7 +514,9 @@ def _build_single_2d_array(
             logger.debug(f"Using pre-loaded pfsConfig for arm {arm}, SM{spectrograph}")
         else:
             pfs_config = b.get("pfsConfig", data_id)
-            logger.debug(f"Loaded pfsConfig from Butler for arm {arm}, SM{spectrograph}")
+            logger.debug(
+                f"Loaded pfsConfig from Butler for arm {arm}, SM{spectrograph}"
+            )
 
         exp = b.get("calexp", data_id)
         det_map = b.get("detectorMap", data_id)
@@ -637,7 +682,7 @@ def create_holoviews_from_arrays(array_results, spectrograph):
                 flipped_array = np.flipud(transformed_array)
 
                 # Also flip the raw array for hover tooltips
-                raw_array = metadata.get('raw_array')
+                raw_array = metadata.get("raw_array")
                 flipped_raw = np.flipud(raw_array)
 
                 # Stack arrays for multiple vdims: [scaled for display, raw for hover]
@@ -650,7 +695,10 @@ def create_holoviews_from_arrays(array_results, spectrograph):
                     combined_data,
                     bounds=(0, 0, width, height),
                     kdims=["x", "y"],
-                    vdims=["intensity", "raw_value"],  # First vdim for display, second for hover
+                    vdims=[
+                        "intensity",
+                        "raw_value",
+                    ],  # First vdim for display, second for hover
                 )
 
                 # Astropy transform already applied, use full range (0-100%) with linear scaling
@@ -689,7 +737,10 @@ def create_holoviews_from_arrays(array_results, spectrograph):
                     hover_tooltips=[
                         ("X", "$x{0.0}"),  # Cursor position X
                         ("Y", "$y{0.0}"),  # Cursor position Y
-                        ("Raw Value", "@raw_value{0.2f}"),  # Original pixel value from raw_array
+                        (
+                            "Raw Value",
+                            "@raw_value{0.2f}",
+                        ),  # Original pixel value from raw_array
                     ],
                     frame_width=plot_width,
                     frame_height=plot_height,
@@ -782,7 +833,7 @@ def create_rasterized_holoviews_from_arrays(
 
                 # Also flip the raw array for hover tooltips
                 # Even with rasterization, we can show approximate raw values
-                raw_array = metadata.get('raw_array')
+                raw_array = metadata.get("raw_array")
                 flipped_raw = np.flipud(raw_array)
 
                 # Stack arrays for multiple vdims: [scaled for display, raw for hover]
@@ -793,7 +844,10 @@ def create_rasterized_holoviews_from_arrays(
                     combined_data,
                     bounds=(0, 0, width, height),
                     kdims=["x", "y"],
-                    vdims=["intensity", "raw_value"],  # First vdim for display, second for hover
+                    vdims=[
+                        "intensity",
+                        "raw_value",
+                    ],  # First vdim for display, second for hover
                 )
 
                 # Get scaling values
@@ -844,7 +898,10 @@ def create_rasterized_holoviews_from_arrays(
                     hover_tooltips=[
                         ("X", "$x{0.0}"),
                         ("Y", "$y{0.0}"),
-                        ("Approx. Value", "@raw_value{0.2f}"),  # Downsampled sky-subtracted pixel value
+                        (
+                            "Approx. Value",
+                            "@raw_value{0.2f}",
+                        ),  # Downsampled sky-subtracted pixel value
                     ],
                     frame_width=plot_width,
                     frame_height=plot_height,
@@ -873,9 +930,7 @@ def create_rasterized_holoviews_from_arrays(
             # Pass through the error from array generation
             hv_results.append((arm, None, error_msg))
 
-    logger.info(
-        f"Rasterized HoloViews images created for spectrograph {spectrograph}"
-    )
+    logger.info(f"Rasterized HoloViews images created for spectrograph {spectrograph}")
     return hv_results
 
 
