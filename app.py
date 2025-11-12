@@ -124,9 +124,20 @@ spectro_cbg = pn.widgets.CheckButtonGroup(
     name="Spectrograph",
     options=[f"SM{i}" for i in range(1, 5)],
     value=[f"SM{i}" for i in range(1, 5)],
-    button_type="default",
+    button_type="primary",
     button_style="outline",
+    # button_style="solid",
     sizing_mode="stretch_width",
+    stylesheets=[
+        """
+        .bk-btn-group .bk-btn.bk-btn-primary.bk-active {
+            color: white !important;
+        }
+        .bk-btn.bk-btn-primary.bk-active {
+            color: white !important;
+        }
+        """
+    ],
 )
 
 visit_mc = pn.widgets.MultiChoice(
