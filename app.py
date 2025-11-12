@@ -129,9 +129,6 @@ spectro_cbg = pn.widgets.CheckButtonGroup(
     sizing_mode="stretch_width",
     stylesheets=[
         """
-        .bk-btn-group .bk-btn.bk-btn-primary.bk-active {
-            color: white !important;
-        }
         .bk-btn.bk-btn-primary.bk-active {
             color: white !important;
         }
