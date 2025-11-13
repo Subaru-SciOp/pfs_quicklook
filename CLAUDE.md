@@ -554,18 +554,21 @@ GUI version (app.py + quicklook_core.py):
 **Major Feature Additions Since Initial Documentation** (Lines: 2,010 → 2,798, +788 lines):
 
 1. **Performance Optimizations** (~300 lines):
+
    - Datashader rasterization for 2D images (~150 lines)
    - Butler instance caching (~50 lines)
    - Visit discovery caching (~50 lines)
    - Directory-based date parsing (~50 lines)
 
 2. **UI/UX Enhancements** (~200 lines):
+
    - Configuration display widget (~50 lines)
    - Hostname validation in launch script (~100 lines)
    - CSS styling improvements (~30 lines)
    - Additional toast notifications and user feedback (~20 lines)
 
 3. **Production Features** (~200 lines):
+
    - Dual-mode launch script (dev/production) (~100 lines)
    - Enhanced error handling and logging (~50 lines)
    - Session state improvements (~50 lines)
@@ -576,12 +579,14 @@ GUI version (app.py + quicklook_core.py):
 **Core Feature Breakdown** (from original 2,010 lines):
 
 1. **GUI/UI Layer** (~600 lines):
+
    - Panel widget definitions and layout (~100 lines)
    - Callback functions (10+ functions, ~400 lines)
    - Session state management (~100 lines)
    - Asynchronous visit discovery (~100 lines)
 
 2. **Enterprise Features** (~500 lines):
+
    - Parallel processing with joblib (~150 lines)
    - HoloViews/Bokeh migration from matplotlib (~150 lines)
    - OB Code ↔ Fiber ID bidirectional mapping (~80 lines)
