@@ -49,7 +49,7 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
 3. **Fiber Selection**
 
    - **OB Code** MultiChoice: Populated after data load, max 20 options/10 search results
-   - **Fiber ID** MultiChoice: All fiber IDs (1-2394), max 20 options/10 search results
+   - **Fiber ID** MultiChoice: All fiber IDs (1-2604), max 20 options/10 search results
    - **Bidirectional Linking**: OB Code ↔ Fiber ID automatic synchronization
 
 4. **Rendering Options**
@@ -1035,7 +1035,7 @@ dataId = {
 
 ### Fiber ID Range
 
-Valid fiber IDs: 1-2394
+Valid fiber IDs: 1-2604
 
 ### OB Code (Observation Code)
 

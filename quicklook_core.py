@@ -1431,7 +1431,7 @@ def build_1d_spectra_as_image(
         # Apply options with hover_tooltips
         # NOTE: data_aspect=1.0 causes rendering issues with large non-square arrays
         # For 2D detector images (4k×4k square), data_aspect=1.0 works fine
-        # For 1D spectra image (2394×11501 landscape), it prevents rendering
+        # For 1D spectra image (2604×11501 landscape), it prevents rendering
         img.opts(
             cmap="cividis",
             clim=(vmin, vmax),
