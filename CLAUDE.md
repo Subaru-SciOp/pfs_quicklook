@@ -1189,7 +1189,7 @@ Key differences from notebook:
 - Responsive design for web deployment
 - Production-ready error handling
 
-## Development Commands
+## Deployment Commands
 
 ### Launch Application (Recommended)
 
