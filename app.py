@@ -151,7 +151,7 @@ obcode_mc = pn.widgets.MultiChoice(
 )
 
 fibers_mc = pn.widgets.MultiChoice(
-    name="FiberId",
+    name="Fiber ID",
     options=np.arange(1, 2605, dtype=int).tolist(),
     option_limit=20,
     search_option_limit=10,
@@ -178,7 +178,7 @@ use_fast_preview_chk = pn.widgets.Checkbox(
 
 btn_load_data = pn.widgets.Button(name="Load Visit", button_type="primary")
 btn_plot_2d = pn.widgets.Button(
-    name="Show 2D Images",
+    name="Show 2D Images (Optional, Slow)",
     button_type="primary",
     disabled=True,
     sizing_mode="stretch_width",
