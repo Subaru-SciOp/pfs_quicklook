@@ -21,7 +21,7 @@ import setuptools
 
 ERROR_MESSAGE = """
 ================================================================================
-ERROR: This package cannot be installed via 'pip install .'
+ERROR: This package cannot be installed via pip (e.g., 'pip install .')
 ================================================================================
 
 This is a web application that requires the LSST Science Pipelines stack
