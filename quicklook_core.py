@@ -235,7 +235,7 @@ def discover_visits(
     Returns
     -------
     list of int
-        Sorted list of available visit numbers
+        Sorted list of available visit numbers in descending order (newest first)
     dict
         Updated cache dictionary with {visit_id: obsdate_utc} for all validated visits
     """
@@ -377,8 +377,8 @@ def discover_visits(
         # Combine cached and new valid visits
         all_valid_visits = cached_valid_visits + new_valid_visits
 
-        # Sort and return as list
-        visit_list = sorted(all_valid_visits)
+        # Sort in descending order (newest first) and return as list
+        visit_list = sorted(all_valid_visits, reverse=True)
         logger.info(
             f"Total valid visits: {len(visit_list)} (cached: {len(cached_valid_visits)}, new: {len(new_valid_visits)})"
         )

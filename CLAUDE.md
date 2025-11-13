@@ -263,7 +263,7 @@ pfs_quicklook/
 - Discovers available visits from Butler datastore
 - Uses Butler registry to query collections matching `base_collection/??????` pattern (6-digit visit numbers)
 - **Date filtering**: If `obsdate_utc` is specified, filters visits by observation date using parallel processing (max 16 cores)
-- Returns: Sorted list of visit numbers (as integers)
+- Returns: Sorted list of visit numbers in descending order (newest first)
 - Called asynchronously on app startup and periodically for auto-refresh
 
 **`load_visit_data(datastore, base_collection, visit)`**:
