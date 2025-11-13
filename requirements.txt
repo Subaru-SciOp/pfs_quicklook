@@ -1,8 +1,10 @@
 panel
+holoviews[recommended]>=1.18.0
+bokeh
 watchfiles
 loguru
-holoviews[recommended]
-datashader
-colorcet
+ipywidgets-bokeh
 joblib
+colorcet
+datashader
 python-dotenv

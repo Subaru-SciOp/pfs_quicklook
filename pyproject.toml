@@ -1,7 +1,64 @@
+# NOTE: This package is NOT meant to be installed via `pip install .`
+# It requires the LSST Science Pipelines stack to be pre-installed.
+# Additional dependencies should be installed with:
+#   pip install --target $LSST_PYTHON_USERLIB -r requirements.txt
+# See README.md for installation instructions.
+
 [project]
 name = "pfs-quicklook"
 version = "0.1.0"
-description = "Add your description here"
+description = "Web application for quick inspection of spectral data from the Prime Focus Spectrograph (PFS)"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+license = "MIT"
+authors = [
+    { name = "Masato Onodera", email = "monodera@naoj.org" },
+    { name = "Subaru/PFS obsproc team", email = "pfs-obs-help@naoj.org" },
+]
+maintainers = [
+    { name = "Masato Onodera", email = "monodera@naoj.org" },
+    { name = "Subaru/PFS obsproc team", email = "pfs-obs-help@naoj.org" },
+]
+keywords = [
+    "astronomy",
+    "spectroscopy",
+    "pfs",
+    "prime-focus-spectrograph",
+    "quicklook",
+    "data-visualization",
+    "web-application",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "panel",
+    "holoviews[recommended]>=1.18.0",
+    "bokeh",
+    "watchfiles",
+    "loguru",
+    "ipywidgets-bokeh",
+    "joblib",
+    "colorcet",
+    "datashader",
+    "python-dotenv",
+]
+
+[project.urls]
+Homepage = "https://github.com/Subaru-SciOp/pfs_quicklook"
+Repository = "https://github.com/Subaru-SciOp/pfs_quicklook"
+Issues = "https://github.com/Subaru-SciOp/pfs_quicklook/issues"
+Documentation = "https://github.com/Subaru-SciOp/pfs_quicklook/blob/main/CLAUDE.md"
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov"]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
