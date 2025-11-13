@@ -152,7 +152,7 @@ obcode_mc = pn.widgets.MultiChoice(
 
 fibers_mc = pn.widgets.MultiChoice(
     name="FiberId",
-    options=np.arange(1, 2395, dtype=int).tolist(),
+    options=np.arange(1, 2605, dtype=int).tolist(),
     option_limit=20,
     search_option_limit=10,
 )
