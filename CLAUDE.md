@@ -456,7 +456,7 @@ app_state = {
 - `PFS_BASE_COLLECTION`: Base collection name (default: `u/obsproc/s25a/20250520b`)
 - `PFS_OBSDATE_UTC`: Observation date for visit filtering (format: "YYYY-MM-DD", default: today's date in UTC)
 - `PFS_VISIT_REFRESH_INTERVAL`: Auto-refresh interval in seconds (default: 300, set to 0 to disable)
-- `PFS_APP_HOSTNAME`: Server hostname for deployment (e.g., `pfsa-usr01.subaru.nao.ac.jp` or `pfsa-web01.subaru.nao.ac.jp`)
+- `PFS_APP_HOSTNAME`: Server hostname for deployment (e.g., `your-server.example.com`)
   - **Required for production launch**: Launch script validates current hostname matches this value
   - **Purpose**: Prevents accidental launches on wrong server, ensures correct WebSocket origin configuration
   - **Multi-server support**: Different servers can have different `.env` configurations
@@ -1227,7 +1227,7 @@ setup -v pfs_pipe2d
 setup -v display_matplotlib
 export LSST_PYTHON_USERLIB="/work/monodera/pyvenvs/lsst-stack-local-pythonlibs"
 export PYTHONPATH="$LSST_PYTHON_USERLIB:$PYTHONPATH"
-python -m panel serve app.py --address 0.0.0.0 --allow-websocket-origin=pfsa-usr01.subaru.nao.ac.jp:5206 --prefix quicklook --dev
+python -m panel serve app.py --address 0.0.0.0 --allow-websocket-origin=<PFS_APP_HOSTNAME>:5206 --prefix quicklook --dev
 ```
 
 **Production Mode**:
@@ -1238,7 +1238,7 @@ setup -v pfs_pipe2d
 setup -v display_matplotlib
 export LSST_PYTHON_USERLIB="/work/monodera/pyvenvs/lsst-stack-local-pythonlibs"
 export PYTHONPATH="$LSST_PYTHON_USERLIB:$PYTHONPATH"
-python -m panel serve app.py --address 0.0.0.0 --allow-websocket-origin=pfsa-usr01.subaru.nao.ac.jp:5106 --prefix quicklook --num-threads 8
+python -m panel serve app.py --address 0.0.0.0 --allow-websocket-origin=<PFS_APP_HOSTNAME>:5106 --prefix quicklook --num-threads 8
 ```
 
 ### Install Additional Dependencies
