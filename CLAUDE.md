@@ -1209,13 +1209,13 @@ The launch script automatically:
 
 **Mode Selection**:
 
-- Detects based on script name: `launch_app.bash` → development, any other name → production
-- Or set `MODE` variable: `MODE=production bash launch_app.bash`
+- Mode is set by the first command-line argument: `bash launch_app.bash dev` for development, or `bash launch_app.bash` for production (default)
+- Alternatively, `bash launch_app.bash production` explicitly sets production mode
 
 **Access URLs**:
 
-- Development: `http://<PFS_APP_HOSTNAME>:5206`
-- Production: `http://<PFS_APP_HOSTNAME>:5106`
+- Development: `http://<PFS_APP_HOSTNAME>:5206/quicklook`
+- Production: `http://<PFS_APP_HOSTNAME>:5106/quicklook`
 
 ### Manual Launch (if bash script fails)
 
@@ -1227,7 +1227,7 @@ setup -v pfs_pipe2d
 setup -v display_matplotlib
 export LSST_PYTHON_USERLIB="/work/monodera/pyvenvs/lsst-stack-local-pythonlibs"
 export PYTHONPATH="$LSST_PYTHON_USERLIB:$PYTHONPATH"
-python -m panel serve app.py --address 0.0.0.0 --allow-websocket-origin=pfsa-usr01.subaru.nao.ac.jp:5206 --dev
+python -m panel serve app.py --address 0.0.0.0 --allow-websocket-origin=pfsa-usr01.subaru.nao.ac.jp:5206 --prefix quicklook --dev
 ```
 
 **Production Mode**:
@@ -1238,7 +1238,7 @@ setup -v pfs_pipe2d
 setup -v display_matplotlib
 export LSST_PYTHON_USERLIB="/work/monodera/pyvenvs/lsst-stack-local-pythonlibs"
 export PYTHONPATH="$LSST_PYTHON_USERLIB:$PYTHONPATH"
-python -m panel serve app.py --address 0.0.0.0 --allow-websocket-origin=pfsa-usr01.subaru.nao.ac.jp:5106 --num-threads 8
+python -m panel serve app.py --address 0.0.0.0 --allow-websocket-origin=pfsa-usr01.subaru.nao.ac.jp:5106 --prefix quicklook --num-threads 8
 ```
 
 ### Install Additional Dependencies

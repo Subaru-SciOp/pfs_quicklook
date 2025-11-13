@@ -91,13 +91,13 @@ You need to have access to one of PFSA servers to run this app. Also, you need a
    **Production mode** (default):
 
    ```text
-   http://<your_server_hostname>:5106
+   http://<your_server_hostname>:5106/quicklook
    ```
 
-   **Development mode** (if launched with MODE=dev):
+   **Development mode** (if launched with `dev` argument: `bash launch_app.bash dev`):
 
    ```text
-   http://<your_server_hostname>:5206
+   http://<your_server_hostname>:5206/quicklook
    ```
 
    The launch script automatically selects the appropriate port based on deployment mode.

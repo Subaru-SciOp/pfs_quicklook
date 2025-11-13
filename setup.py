@@ -14,26 +14,29 @@ Installation Instructions:
 See README.md for detailed installation instructions.
 """
 
-import sys
+import setuptools
 
+# This setup.py is designed to prevent pip installation by raising an error
+# when setuptools.setup() is called during the build process
 
-def main():
-    """Prevent standard pip installation"""
-    print("\n" + "=" * 70)
-    print("ERROR: This package cannot be installed via 'pip install .'")
-    print("=" * 70)
-    print("\nThis is a web application that requires the LSST Science Pipelines")
-    print("stack to be pre-installed and configured.")
-    print("\nProper installation steps:")
-    print("  1. Load LSST stack environment")
-    print("  2. Install additional dependencies with:")
-    print("     pip install --target $LSST_PYTHON_USERLIB -r requirements.txt")
-    print("  3. Configure .env file")
-    print("  4. Launch with: bash launch_app.bash")
-    print("\nSee README.md for detailed instructions.")
-    print("=" * 70 + "\n")
-    sys.exit(1)
+ERROR_MESSAGE = """
+================================================================================
+ERROR: This package cannot be installed via 'pip install .'
+================================================================================
 
+This is a web application that requires the LSST Science Pipelines stack
+to be pre-installed and configured.
 
-if __name__ == "__main__":
-    main()
+Proper installation steps:
+  1. Load LSST stack environment
+  2. Install additional dependencies with:
+     pip install --target $LSST_PYTHON_USERLIB -r requirements.txt
+  3. Configure .env file
+  4. Launch with: bash launch_app.bash
+
+See README.md for detailed instructions.
+================================================================================
+"""
+
+# Raise an error immediately to prevent installation
+raise RuntimeError(ERROR_MESSAGE)
