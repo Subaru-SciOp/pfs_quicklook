@@ -24,7 +24,6 @@ from quicklook_core import (
     build_2d_arrays_multi_arm,
     create_holoviews_from_arrays,
     create_pfsconfig_dataframe,
-    create_rasterized_holoviews_from_arrays,
     discover_visits,
     get_butler_cached,
     load_visit_data,
@@ -170,12 +169,6 @@ subtract_sky_chk = pn.widgets.Checkbox(name="Sky subtraction", value=True)
 overlay_chk = pn.widgets.Checkbox(name="DetectorMap overlay", value=False)
 scale_sel = pn.widgets.Select(
     name="Scale", options=["zscale", "minmax"], value="zscale"
-)
-
-# Rendering mode selection: Fast Preview (rasterized) vs Pixel Inspection (full resolution)
-use_fast_preview_chk = pn.widgets.Checkbox(
-    name="Fast Preview Mode (recommended)",
-    value=True,  # Default to fast preview for better performance
 )
 
 btn_load_data = pn.widgets.Button(name="Load Visit", button_type="primary")
@@ -662,10 +655,10 @@ def plot_2d_callback(event=None):
 
     try:
         # Show loading spinner in 2D tab
-        show_loading_spinner("Processing 2D images...", tab_index=1)
+        show_loading_spinner("Processing 2D images (may take a while)...", tab_index=1)
         tabs.active = 1  # Switch to 2D tab to show spinner
 
-        status_text.object = "**Checking data availability and creating 2D plots...**"
+        status_text.object = "**Checking data availability and creating 2D plots (may take a while)...**"
         logger.info(
             f"Attempting to load all {len(all_arms)} arms for {len(spectros)} spectrographs"
         )
@@ -704,31 +697,15 @@ def plot_2d_callback(event=None):
         )
 
         # Create HoloViews objects in main thread (not pickle-able)
-        # Choose rendering mode based on checkbox value
-        use_fast_preview = use_fast_preview_chk.value
-        rendering_mode = (
-            "rasterized (fast preview)" if use_fast_preview else "full resolution"
-        )
-        logger.info(
-            f"Arrays built, now creating HoloViews images in main thread ({rendering_mode})"
-        )
+        logger.info("Arrays built, now creating HoloViews images in main thread")
 
         for spectro, array_results, error in array_results_all:
             if array_results is not None and error is None:
                 # Create HoloViews objects from arrays
-                # Use rasterized version for fast preview, full resolution for pixel inspection
                 try:
-                    if use_fast_preview:
-                        arm_results = create_rasterized_holoviews_from_arrays(
-                            array_results,
-                            spectro,
-                            raster_width=1024,
-                            raster_height=1024,
-                        )
-                    else:
-                        arm_results = create_holoviews_from_arrays(
-                            array_results, spectro
-                        )
+                    arm_results = create_holoviews_from_arrays(
+                        array_results, spectro
+                    )
                     error = None
                 except Exception as e:
                     logger.error(
@@ -1284,13 +1261,6 @@ def on_session_created():
     )
     pn.state.notifications.info("Configuration reloaded from .env file", duration=3000)
 
-    # Notify user about rendering mode options
-    pn.state.notifications.info(
-        "Fast Preview Mode enabled by default for better performance. "
-        "Uncheck to enable exact pixel value inspection.",
-        duration=8000,  # Show for 8 seconds
-    )
-
     # Initialize session state and store configuration
     session_state = get_session_state()
     session_state["config"] = {
@@ -1399,8 +1369,6 @@ sidebar = pn.Column(
     pn.layout.Divider(),
     status_text,
     config_info_text,
-    "#### Rendering Options",
-    use_fast_preview_chk,
     min_width=280,
     max_width=400,
     sizing_mode="stretch_width",

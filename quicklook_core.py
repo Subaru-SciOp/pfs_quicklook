@@ -17,7 +17,6 @@ from astropy.visualization import (
 from bokeh.models import HoverTool, Legend
 from bokeh.plotting import figure as bokeh_figure
 from dotenv import load_dotenv
-from holoviews.operation.datashader import rasterize
 from joblib import Parallel, delayed
 from loguru import logger
 
@@ -639,9 +638,16 @@ def _build_single_2d_array(
 
     except Exception as e:
         error_msg = str(e)
-        logger.error(
-            f"Failed to build 2D array for arm {arm}, SM{spectrograph}: {error_msg}"
-        )
+        # Use WARNING for missing data (expected for some configurations)
+        # Use ERROR for actual processing errors
+        if "could not be found" in error_msg.lower():
+            logger.warning(
+                f"Data not available for arm {arm}, SM{spectrograph}: {error_msg}"
+            )
+        else:
+            logger.error(
+                f"Failed to build 2D array for arm {arm}, SM{spectrograph}: {error_msg}"
+            )
         return (arm, None, None, error_msg)
 
 
@@ -836,170 +842,6 @@ def create_holoviews_from_arrays(array_results, spectrograph):
             hv_results.append((arm, None, error_msg))
 
     logger.info(f"HoloViews images created for spectrograph {spectrograph}")
-    return hv_results
-
-
-def create_rasterized_holoviews_from_arrays(
-    array_results, spectrograph, raster_width=1024, raster_height=1024
-):
-    """
-    Create Datashader-rasterized HoloViews images from numpy arrays for fast rendering.
-
-    This function creates downsampled versions of the images using Datashader's
-    dynamic rasterization, which provides ~97% reduction in data transfer to the
-    browser and much faster pan/zoom interactions. However, this sacrifices exact
-    pixel value hover tooltips.
-
-    Parameters
-    ----------
-    array_results : list
-        List of (arm, transformed_array, metadata, error_msg) tuples
-    spectrograph : int
-        Spectrograph number
-    raster_width : int, optional
-        Width of rasterized image in pixels (default: 1024)
-    raster_height : int, optional
-        Height of rasterized image in pixels (default: 1024)
-
-    Returns
-    -------
-    list of tuples
-        List of (arm, rasterized hv.Image, error_msg) tuples
-
-    Notes
-    -----
-    Rasterized images provide significant performance improvements:
-    - ~97% reduction in data transfer (4096×4096 → 1024×1024)
-    - Much faster initial load (estimated 8× speedup)
-    - Smooth pan/zoom with dynamic re-rendering
-    - Automatic level-of-detail on zoom
-
-    Trade-offs:
-    - Pixel values in hover are approximate (mean of downsampled region)
-    - Not suitable for precise pixel-level quality assessment
-    - Saved images are downsampled (not full resolution)
-    """
-    logger.info(
-        f"Creating rasterized HoloViews images for SM{spectrograph} "
-        f"({raster_width}×{raster_height})"
-    )
-
-    hv_results = []
-    for arm, transformed_array, metadata, error_msg in array_results:
-        if transformed_array is not None and metadata is not None and error_msg is None:
-            try:
-                # Create HoloViews Image (same as non-rasterized version)
-                height, width = metadata["height"], metadata["width"]
-
-                logger.info(
-                    f"Rasterizing image for {arm}: "
-                    f"array shape={transformed_array.shape}, "
-                    f"width={width}, height={height}"
-                )
-
-                # Flip arrays vertically (astronomical convention: (0,0) at lower-left)
-                flipped_array = np.flipud(transformed_array)
-
-                # Also flip the raw array for hover tooltips
-                # Even with rasterization, we can show approximate raw values
-                raw_array = metadata.get("raw_array")
-                flipped_raw = np.flipud(raw_array)
-
-                # Stack arrays for multiple vdims: [scaled for display, raw for hover]
-                # Datashader will downsample both, but approximate raw values are better than nothing
-                combined_data = np.stack([flipped_array, flipped_raw], axis=-1)
-
-                img = hv.Image(
-                    combined_data,
-                    bounds=(0, 0, width, height),
-                    kdims=["x", "y"],
-                    vdims=[
-                        "intensity",
-                        "raw_value",
-                    ],  # First vdim for display, second for hover
-                )
-
-                # Get scaling values
-                vmin = transformed_array.min()
-                vmax = transformed_array.max()
-
-                # Calculate aspect ratio and plot dimensions
-                BASE_SIZE = 512
-                aspect_ratio = width / height
-                plot_width, plot_height = (
-                    (BASE_SIZE, int(BASE_SIZE / aspect_ratio))
-                    if aspect_ratio >= 1.0
-                    else (int(BASE_SIZE * aspect_ratio), BASE_SIZE)
-                )
-                logger.debug(
-                    f"{arm}: aspect={aspect_ratio:.3f}, plot={plot_width}x{plot_height}"
-                )
-
-                # Apply rasterization with dynamic re-rendering
-                # This creates a downsampled version that re-renders on zoom/pan
-                rasterized_img = rasterize(
-                    img,
-                    aggregator="mean",  # Use mean aggregation for pixel values
-                    width=raster_width,
-                    height=raster_height,
-                    dynamic=True,  # Enable dynamic re-rendering on zoom/pan
-                )
-
-                # Configure display options
-                rasterized_img.opts(
-                    cmap="cividis",
-                    clim=(vmin, vmax),
-                    colorbar=False,
-                    tools=[
-                        "box_zoom",
-                        "wheel_zoom",
-                        "pan",
-                        "undo",
-                        "redo",
-                        "reset",
-                        "save",
-                    ],
-                    active_tools=["box_zoom"],
-                    default_tools=[],
-                    # Note: Hover tooltips show approximate aggregated values from downsampled data
-                    # raw_value shows the sky-subtracted value (after processing)
-                    # Values are approximate (mean of pixels in each downsampled region)
-                    hover_tooltips=[
-                        ("X", "$x{0.0}"),
-                        ("Y", "$y{0.0}"),
-                        (
-                            "Approx. Value",
-                            "@raw_value{0.2f}",
-                        ),  # Downsampled sky-subtracted pixel value
-                    ],
-                    frame_width=plot_width,
-                    frame_height=plot_height,
-                    data_aspect=1.0,
-                    title=metadata["title"] + " [Fast Preview]",
-                    xlabel="X (pixels)",
-                    ylabel="Y (pixels)",
-                    toolbar="above",
-                    axiswise=True,
-                    framewise=True,
-                )
-
-                hv_results.append((arm, rasterized_img, None))
-                logger.info(
-                    f"Created rasterized HoloViews image for arm {arm}, SM{spectrograph}"
-                )
-
-            except Exception as e:
-                error_msg = str(e)
-                logger.error(
-                    f"Failed to create rasterized HoloViews image for arm {arm}, "
-                    f"SM{spectrograph}: {error_msg}"
-                )
-                hv_results.append((arm, None, error_msg))
-        else:
-            # Pass through the error from array generation
-            hv_results.append((arm, None, error_msg))
-
-    logger.info(f"Rasterized HoloViews images created for spectrograph {spectrograph}")
     return hv_results
 
 
