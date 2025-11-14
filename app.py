@@ -166,7 +166,14 @@ btn_clear_selection = pn.widgets.Button(
 )
 
 subtract_sky_chk = pn.widgets.Checkbox(name="Sky subtraction", value=True)
-overlay_chk = pn.widgets.Checkbox(name="DetectorMap overlay", value=False)
+detmap_overlay_switch = pn.widgets.Switch(
+    name="Detector Map Overlay",
+    value=False,
+    sizing_mode="fixed",
+    width=200,
+    align=("start", "center"),  # Horizontal: left, Vertical: center
+    # margin=(50, 30, 0, 10),
+)
 scale_sel = pn.widgets.Select(
     name="Scale", options=["zscale", "minmax"], value="zscale"
 )
@@ -647,11 +654,8 @@ def plot_2d_callback(event=None):
     fibers = fibers_mc.value if fibers_mc.value else None
 
     subtract_sky = subtract_sky_chk.value
-    overlay = overlay_chk.value
+    enable_detmap_overlay = detmap_overlay_switch.value
     scale_algo = scale_sel.value
-
-    if overlay:
-        pn.state.notifications.warning("DetectorMap overlay is not supported yet.")
 
     try:
         # Show loading spinner in 2D tab
@@ -680,8 +684,8 @@ def plot_2d_callback(event=None):
                     spectrograph=spectro,
                     arms=all_arms,
                     subtract_sky=subtract_sky,
-                    overlay=overlay,
-                    fiber_ids=fibers if overlay else None,
+                    enable_detmap_overlay=enable_detmap_overlay,
+                    fiber_ids=fibers if enable_detmap_overlay else None,
                     scale_algo=scale_algo,
                     n_jobs=-1,  # Use all available CPUs for arms within each spectrograph
                     pfsConfig_preloaded=pfs_config_shared,  # Share pfsConfig across all arms
@@ -860,7 +864,7 @@ def plot_2d_callback(event=None):
 - visit: {visit}
 - spectrographs: {', '.join([f'SM{s}' for s in sorted(spectros)])}
 - fibers: {fiber_info}
-- subtract_sky: {subtract_sky}, overlay: {overlay}, scale: {scale_algo}
+- subtract_sky: {subtract_sky}, detmap_overlay: {enable_detmap_overlay}, scale: {scale_algo}
 """
     except Exception as e:
         error_pane = pn.pane.Markdown(f"**Error:** {e}")
@@ -1355,6 +1359,7 @@ sidebar = pn.Column(
     visit_mc,
     btn_load_data,
     pn.layout.Divider(),
+    detmap_overlay_switch,
     spectro_cbg,
     pn.Column(btn_plot_2d),
     pn.layout.Divider(),
