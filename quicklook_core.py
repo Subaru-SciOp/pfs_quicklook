@@ -34,6 +34,7 @@ try:
     from pfs.datamodel import FiberStatus, TargetType
     from pfs.drp.stella import SpectrumSet
     from pfs.drp.stella.subtractSky1d import subtractSky1d
+    from pfs.utils.fiberids import FiberIds
 
     logger.info("LSST/PFS imports succeeded.")
 except Exception as _import_err:
@@ -458,7 +459,7 @@ def create_pfsconfig_dataframe(pfs_config):
     Returns
     -------
     pd.DataFrame
-        DataFrame with columns: fiberId, objId, obCode, ra, dec,
+        DataFrame with columns: fiberId, spectrograph, objId, obCode, ra, dec,
         catId, targetType, fiberStatus, proposalId.
         Sorted by fiberId for easier navigation.
 
@@ -467,10 +468,22 @@ def create_pfsconfig_dataframe(pfs_config):
     - Enum fields (targetType, fiberStatus) are converted to string names
     - Bytes-type fields (obCode, proposalId) are decoded to UTF-8 strings
     - Large integers (objId) are converted to strings for Bokeh compatibility
+    - Spectrograph ID is derived from fiberId using pfs.utils.fiberids.FiberIds
     - DataFrame is sorted by fiberId in ascending order
     """
+    # Get spectrograph ID mapping from fiber ID
+    gfm = FiberIds()
+
+    # Create a mapping from fiberId to spectrograph
+    # FiberIds().fiberId is the full list of fiber IDs (1-2604)
+    # FiberIds().spectrographId is the corresponding spectrograph ID (1-4)
+    fiberid_to_spectrograph = dict(zip(gfm.fiberId, gfm.spectrographId))
+
     data = {
         "fiberId": pfs_config.fiberId.astype(np.int32),
+        "spectrograph": [
+            fiberid_to_spectrograph.get(fid, -1) for fid in pfs_config.fiberId
+        ],
         "objId": pfs_config.objId.astype(
             str
         ),  # Convert large int64 to string for Bokeh compatibility
