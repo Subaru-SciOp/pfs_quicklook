@@ -6,10 +6,10 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
 
 **Key Metrics (Updated: 2025-11-13):**
 
-- **Total code**: 2,798 lines (app.py: 1,312 lines, quicklook_core.py: 1,486 lines)
-- **Real code**: ~1,800 lines (estimated, excluding docstrings and comments)
+- **Total code**: 2,935 lines (app.py: 1,393 lines, quicklook_core.py: 1,542 lines)
+- **Real code**: ~1,900 lines (estimated, excluding docstrings and comments)
 - **Documentation**: Comprehensive NumPy-style docstrings throughout
-- **Code efficiency**: ~6× expansion from original Jupyter notebook (292 lines) with 15× functionality increase
+- **Code efficiency**: ~6.5× expansion from original Jupyter notebook (292 lines) with 16× functionality increase
 
 ## Current Status
 
@@ -90,12 +90,23 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
 
 **Main Panel Tabs**:
 
-- **2D Tab**: Tabbed layout showing multiple spectrographs with horizontal arm arrangements
+- **pfsConfig Tab**: Fiber configuration and pointing information (displayed first)
+  - Visit header: pfsDesignId (hex), RA/Dec boresight, position angle, arms, design name
+  - Tabulator widget: Interactive table with 250 rows/page
+  - Columns: fiberId, objId, obCode, ra, dec, catId, targetType, fiberStatus, proposalId
+  - Header filtering on all columns except ra/dec
+  - Visual styling:
+    - SCIENCE+GOOD: Bold text (important targets)
+    - SCIENCE+not GOOD: Bold gray text (problematic targets)
+    - SKY/FLUXSTD: Gray text
+    - Others: Light gray text
+  - Read-only table (sorting and filtering only)
+- **2D Images Tab**: Tabbed layout showing multiple spectrographs with horizontal arm arrangements
   - SM1-4 tabs (one per selected spectrograph)
   - Within each tab: arms arranged horizontally (Blue, Red, NIR, Medium-Red)
   - Panel Row layout with HoloViews panes (interactive Bokeh backend)
-- **1D Tab**: Bokeh interactive plot showing 1D spectra
 - **1D Image Tab**: 2D visualization of all fiber spectra
+- **1D Spectra Tab**: Bokeh interactive plot showing 1D spectra
 - **Log Tab**: Markdown pane showing execution status and parameters
 
 **UI Features**:
