@@ -22,6 +22,7 @@ from quicklook_core import (
     build_1d_spectra_as_image,
     build_2d_arrays_multi_arm,
     create_holoviews_from_arrays,
+    create_pfsconfig_dataframe,
     create_rasterized_holoviews_from_arrays,
     discover_visits,
     get_butler_cached,
@@ -29,7 +30,7 @@ from quicklook_core import (
     reload_config,
 )
 
-pn.extension(notifications=True)
+pn.extension("tabulator", notifications=True)
 
 
 # --- Session State Management ---
@@ -207,6 +208,7 @@ config_info_text = pn.pane.Markdown(
 )
 
 # --- Output panes ---
+pane_pfsconfig = pn.Column(sizing_mode="scale_width")
 pane_2d = pn.Column(sizing_mode="scale_width")
 pane_1d = pn.Column(height=550, sizing_mode="scale_width")
 pane_1d_image = pn.Column(sizing_mode="scale_width")
@@ -230,6 +232,7 @@ def create_loading_overlay(message):
 
 
 tabs = pn.Tabs(
+    ("Target Info", pane_pfsconfig),
     ("2D Images", pane_2d),
     ("1D Image", pane_1d_image),
     ("1D Spectra", pane_1d),
@@ -263,7 +266,7 @@ def show_loading_spinner(message, tab_index=None):
     message : str
         Message to display below the spinner
     tab_index : int, optional
-        Tab index to show spinner in (0=2D, 1=1D Image, 2=1D Spectra).
+        Tab index to show spinner in (0=pfsConfig, 1=2D Images, 2=1D Image, 3=1D Spectra, 4=Log).
         If None, shows in currently active tab.
     """
     overlay = create_loading_overlay(message)
@@ -274,10 +277,12 @@ def show_loading_spinner(message, tab_index=None):
 
     # Clear the appropriate pane and show spinner
     if tab_index == 0:
-        pane_2d.objects = [overlay]
+        pane_pfsconfig.objects = [overlay]
     elif tab_index == 1:
-        pane_1d_image.objects = [overlay]
+        pane_2d.objects = [overlay]
     elif tab_index == 2:
+        pane_1d_image.objects = [overlay]
+    elif tab_index == 3:
         pane_1d.objects = [overlay]
 
 
@@ -335,6 +340,80 @@ def load_data_callback(event=None):
             "obcode_to_fibers": obcode_to_fibers,
             "fiber_to_obcode": fiber_to_obcode,
         }
+
+        # Create pfsConfig DataFrame and display in Tabulator
+        df_pfsconfig = create_pfsconfig_dataframe(pfsConfig)
+        logger.info(f"Created pfsConfig DataFrame with shape: {df_pfsconfig.shape}")
+        logger.info(f"DataFrame columns: {df_pfsconfig.columns.tolist()}")
+
+        # Style function to highlight different fiber types
+        def style_science_bad_fibers(row):
+            """Apply styling based on targetType and fiberStatus
+
+            - SCIENCE + GOOD: Bold + black (important science targets)
+            - SCIENCE + not GOOD: Bold + gray (problematic science targets)
+            - SKY: Medium gray
+            - FLUXSTD: Medium gray
+            - Others: Light gray
+            """
+            if row["targetType"] == "SCIENCE" and row["fiberStatus"] == "GOOD":
+                return ["font-weight: bold"] * len(row)
+            elif row["targetType"] == "SCIENCE" and row["fiberStatus"] != "GOOD":
+                return ["font-weight: bold; color: #999999"] * len(row)
+            elif row["targetType"] == "SKY":
+                return ["color: #999999"] * len(row)
+            elif row["targetType"] == "FLUXSTD":
+                return ["color: #999999"] * len(row)
+            else:
+                return ["color: #CCCCCC"] * len(row)
+
+        # Configure column-specific settings
+        tabulator = pn.widgets.Tabulator(
+            df_pfsconfig,
+            pagination="local",
+            page_size=250,
+            sizing_mode="stretch_width",
+            height=700,
+            show_index=False,
+            layout="fit_data_table",
+            disabled=True,  # Read-only table
+            widths={
+                "objId": 200,  # Wide enough for 64-bit integers (up to 20 digits)
+                "obCode": 300,  # Double width for observation codes
+            },
+            configuration={
+                "columns": [
+                    {"field": "fiberId", "headerFilter": True},
+                    {"field": "objId", "headerFilter": True},
+                    {"field": "obCode", "headerFilter": True},
+                    {"field": "ra", "headerFilter": False},
+                    {"field": "dec", "headerFilter": False},
+                    {"field": "catId", "headerFilter": True},
+                    {"field": "targetType", "headerFilter": True},
+                    {"field": "fiberStatus", "headerFilter": True},
+                    {"field": "proposalId", "headerFilter": True},
+                ],
+            },
+        )
+
+        # Apply styling
+        tabulator.style.apply(style_science_bad_fibers, axis=1)
+
+        # Create header information from pfsConfig
+        header_info = f"""
+### Visit {visit} - Pointing Information
+
+- **pfsDesign ID**: {pfsConfig.pfsDesignId} (0x{pfsConfig.pfsDesignId:016x})
+- **RA**: {pfsConfig.raBoresight:.6f} deg
+- **Dec**: {pfsConfig.decBoresight:.6f} deg
+- **PA**: {pfsConfig.posAng:.6f} deg
+- **Arms**: {pfsConfig.arms}
+- **Design Name**: {pfsConfig.designName if hasattr(pfsConfig, 'designName') else 'N/A'}
+"""
+        header_pane = pn.pane.Markdown(header_info, sizing_mode="stretch_width")
+
+        pane_pfsconfig.objects = [header_pane, tabulator]
+        logger.info("Tabulator widget created and added to pane_pfsconfig")
 
         # Update OB Code options
         state["programmatic_update"] = True
@@ -559,8 +638,8 @@ def plot_2d_callback(event=None):
 
     try:
         # Show loading spinner in 2D tab
-        show_loading_spinner("Processing 2D images...", tab_index=0)
-        tabs.active = 0  # Switch to 2D tab to show spinner
+        show_loading_spinner("Processing 2D images...", tab_index=1)
+        tabs.active = 1  # Switch to 2D tab to show spinner
 
         status_text.object = "**Checking data availability and creating 2D plots...**"
         logger.info(
@@ -769,7 +848,7 @@ def plot_2d_callback(event=None):
         new_tabs = pn.Tabs(*tab_items)
         pane_2d.objects = [new_tabs]
 
-        tabs.active = 0  # Switch to 2D tab
+        tabs.active = 1  # Switch to 2D tab
         status_text.object = f"**2D plot created for visit {visit}**"
         pn.state.notifications.success(
             f"2D plot created for {len(spectrograph_panels)} spectrograph(s)"
@@ -830,8 +909,8 @@ def plot_1d_callback(event=None):
 
     try:
         # Show loading spinner in 1D Spectra tab
-        show_loading_spinner("Creating 1D spectra plot...", tab_index=2)
-        tabs.active = 2  # Switch to 1D tab to show spinner
+        show_loading_spinner("Creating 1D spectra plot...", tab_index=3)
+        tabs.active = 3  # Switch to 1D Spectra tab to show spinner
 
         status_text.object = "**Creating 1D plot...**"
 
@@ -899,8 +978,8 @@ def plot_1d_image_callback(event=None):
 
     try:
         # Show loading spinner in 1D Image tab
-        show_loading_spinner("Creating 1D spectra image...", tab_index=1)
-        tabs.active = 1  # Switch to 1D Image tab to show spinner
+        show_loading_spinner("Creating 1D spectra image...", tab_index=2)
+        tabs.active = 2  # Switch to 1D Image tab to show spinner
 
         status_text.object = "**Creating 1D spectra image...**"
 
@@ -956,6 +1035,7 @@ def reset_app(event=None):
     Disables plot buttons and re-enables Load Data button.
     Clears OB Code options and all selections.
     """
+    pane_pfsconfig.objects = []
     pane_2d.objects = []
     pane_1d.objects = []
     pane_1d_image.objects = []

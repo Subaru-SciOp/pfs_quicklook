@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 import holoviews as hv
 import numpy as np
+import pandas as pd
 from astropy.visualization import (
     AsinhStretch,
     LuptonAsinhStretch,
@@ -30,6 +31,7 @@ hv.extension("bokeh")
 # --- LSST/PFS imports ---
 try:
     from lsst.daf.butler import Butler
+    from pfs.datamodel import FiberStatus, TargetType
     from pfs.drp.stella import SpectrumSet
     from pfs.drp.stella.subtractSky1d import subtractSky1d
 
@@ -439,6 +441,60 @@ def load_visit_data(datastore: str, base_collection: str, visit: int):
     )
 
     return pfsConfig, obcode_to_fibers, fiber_to_obcode
+
+
+def create_pfsconfig_dataframe(pfs_config):
+    """Create DataFrame from pfsConfig for Tabulator display
+
+    Extracts key fiber configuration parameters from pfsConfig object
+    and returns them as a pandas DataFrame suitable for display in
+    Panel Tabulator widget.
+
+    Parameters
+    ----------
+    pfs_config : pfs.datamodel.PfsConfig
+        PfsConfig object containing fiber configuration
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with columns: fiberId, objId, obCode, ra, dec,
+        catId, targetType, fiberStatus, proposalId.
+        Sorted by fiberId for easier navigation.
+
+    Notes
+    -----
+    - Enum fields (targetType, fiberStatus) are converted to string names
+    - Bytes-type fields (obCode, proposalId) are decoded to UTF-8 strings
+    - Large integers (objId) are converted to strings for Bokeh compatibility
+    - DataFrame is sorted by fiberId in ascending order
+    """
+    data = {
+        "fiberId": pfs_config.fiberId.astype(np.int32),
+        "objId": pfs_config.objId.astype(
+            str
+        ),  # Convert large int64 to string for Bokeh compatibility
+        "obCode": [
+            code.decode("utf-8") if isinstance(code, bytes) else code
+            for code in pfs_config.obCode
+        ],
+        "ra": pfs_config.ra.astype(np.float64),
+        "dec": pfs_config.dec.astype(np.float64),
+        "catId": pfs_config.catId.astype(np.int32),
+        "targetType": [TargetType(tt).name for tt in pfs_config.targetType],
+        "fiberStatus": [FiberStatus(fs).name for fs in pfs_config.fiberStatus],
+        "proposalId": [
+            pid.decode("utf-8") if isinstance(pid, bytes) else pid
+            for pid in pfs_config.proposalId
+        ],
+    }
+
+    df = pd.DataFrame(data)
+
+    # Sort by fiberId for easier navigation
+    df = df.sort_values("fiberId").reset_index(drop=True)
+
+    return df
 
 
 # --- 2D image builder ---

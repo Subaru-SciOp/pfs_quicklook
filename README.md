@@ -4,6 +4,7 @@ This repository contains a web application for quick inspection of data from the
 
 The app replaces the previous Jupyter notebook-based quicklook tool ([check_quick_reduction_data.ipynb](check_quick_reduction_data.ipynb)) with a production-ready web interface featuring:
 
+- **Fiber configuration viewer** with interactive table showing pointing and fiber details
 - **Interactive 2D/1D spectral visualization** with zoom, pan, and hover tools
 - **Multi-user support** with per-session state isolation
 - **Performance optimizations** (8× faster 2D rendering, 100× faster visit discovery)
