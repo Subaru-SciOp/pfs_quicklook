@@ -6,10 +6,10 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
 
 **Key Metrics (Updated: 2025-11-13):**
 
-- **Total code**: 2,935 lines (app.py: 1,393 lines, quicklook_core.py: 1,542 lines)
-- **Real code**: ~1,900 lines (estimated, excluding docstrings and comments)
+- **Total code**: 2,774 lines (app.py: 1,384 lines, quicklook_core.py: 1,390 lines)
+- **Real code**: ~1,800 lines (estimated, excluding docstrings and comments)
 - **Documentation**: Comprehensive NumPy-style docstrings throughout
-- **Code efficiency**: ~6.5× expansion from original Jupyter notebook (292 lines) with 16× functionality increase
+- **Code efficiency**: ~6.2× expansion from original Jupyter notebook (292 lines) with 16× functionality increase
 
 ## Current Status
 
@@ -63,26 +63,14 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
    - **Fiber ID** MultiChoice: All fiber IDs (1-2604), max 20 options/10 search results
    - **Bidirectional Linking**: OB Code ↔ Fiber ID automatic synchronization
 
-5. **Rendering Options**
-
-   - **Fast Preview Mode** (checkbox, default: True): Uses Datashader rasterization for ~8× faster loading
-     - Downsamples 4096×4096 images to 1024×1024 for browser display
-     - Dynamic re-rendering on zoom/pan for smooth interaction
-     - Hover shows approximate pixel values (not exact raw values)
-     - Recommended for initial quick inspection and navigation
-   - **Pixel Inspection Mode** (unchecked): Full resolution with exact pixel values
-     - Shows exact raw pixel values in hover tooltips
-     - Slower initial load but essential for quality assessment
-     - Use when precise pixel value inspection is required
-
-6. **Plot Controls**
+5. **Plot Controls**
 
    - **Plot 2D** button: Creates 2D spectral image (enabled after data load)
    - **Plot 1D** button: Creates 1D spectra plot (enabled after data load, requires fiber selection)
    - **Plot 1D Image** button: Creates 2D representation of all 1D spectra
    - **Reset** button: Clears all data and selections
 
-7. **Options** (Currently commented out)
+6. **Options** (Currently commented out)
    - Sky subtraction (checkbox, default: True)
    - DetectorMap overlay (checkbox, default: False)
    - Scale selection (zscale/minmax, default: zscale)
@@ -559,17 +547,16 @@ Original notebook (check_quick_reduction_data.py):
   - Docstrings: 0 lines
 
 GUI version (app.py + quicklook_core.py):
-  - Total: 2,798 lines (+2,327 lines from notebook)
+  - Total: 2,774 lines (+2,303 lines from notebook)
   - Estimated real code: ~1,800 lines (6.2× increase from notebook)
   - Docstrings: Comprehensive NumPy-style throughout
   - Comments: Extensive inline documentation
 ```
 
-**Major Feature Additions Since Initial Documentation** (Lines: 2,010 → 2,798, +788 lines):
+**Major Feature Additions Since Initial Documentation** (Lines: 2,010 → 2,774, +764 lines):
 
-1. **Performance Optimizations** (~300 lines):
+1. **Performance Optimizations** (~150 lines):
 
-   - Datashader rasterization for 2D images (~150 lines)
    - Butler instance caching (~50 lines)
    - Visit discovery caching (~50 lines)
    - Directory-based date parsing (~50 lines)
@@ -587,7 +574,7 @@ GUI version (app.py + quicklook_core.py):
    - Enhanced error handling and logging (~50 lines)
    - Session state improvements (~50 lines)
 
-4. **Documentation & Comments** (~88 lines):
+4. **Documentation & Comments** (~214 lines):
    - Additional docstrings and inline comments
 
 **Core Feature Breakdown** (from original 2,010 lines):
@@ -619,12 +606,12 @@ GUI version (app.py + quicklook_core.py):
 - Web-based interactive UI with real-time updates
 - Multi-user support with per-session state isolation
 - Non-blocking UI with background processing
-- Production-ready performance optimizations (8× faster 2D rendering, 100× faster visit discovery)
+- Production-ready performance optimizations (100× faster visit discovery)
 - Dual-mode deployment (dev/production) with hostname validation
 - Configuration display for operational transparency
 - 4×4=16 parallel processing (full CPU utilization on 128-core systems)
 - Robust error handling for production use
-- HoloViews/Datashader interactive visualization (zoom, pan, hover, dynamic re-rendering)
+- HoloViews interactive visualization (zoom, pan, hover with exact pixel values)
 - Comprehensive NumPy-style documentation
 
 ✗ **Costs**:
@@ -637,93 +624,6 @@ GUI version (app.py + quicklook_core.py):
 **Conclusion**: Highly efficient production-ready implementation. The 6.2× code increase (1,800 lines) delivers enterprise-grade web application with multi-user support, production/development deployment modes, comprehensive performance optimizations, and robust error handling. Feature-to-code ratio remains excellent with ~120 lines per major feature.
 
 ## Performance Optimization
-
-### 2D Image Rendering Optimization with Datashader (2025-10-31)
-
-#### Implementation: Adaptive Rendering with Fast Preview Mode
-
-**Goal:** Improve 2D image display performance for large 4096×4096 images while preserving pixel inspection capability.
-
-**Problem:**
-
-- Large image sizes (4k×4k per arm, up to 16 images total) caused slow browser rendering
-- Full data transfer: ~268 MB per image × 16 images = ~4.3 GB total
-- Browser must render 16+ million pixels per image
-- Pan/zoom operations could be sluggish with multiple images
-
-**Solution: Dual Rendering Mode**
-
-Implemented two rendering modes with user-selectable toggle:
-
-1. **Fast Preview Mode** (default, recommended):
-
-   - Uses Datashader rasterization to downsample images to 1024×1024
-   - 97% reduction in data transfer (268 MB → 8 MB per image)
-   - Dynamic re-rendering on zoom/pan for smooth interaction
-   - Hover shows approximate pixel values
-   - Title shows "[Fast Preview]" indicator
-   - Estimated 8× faster initial load time
-
-2. **Pixel Inspection Mode** (opt-in):
-   - Full 4096×4096 resolution with exact raw pixel values
-   - Hover tooltips show precise pixel values for quality assessment
-   - Slower initial load but essential for detailed inspection
-   - Same as original implementation
-
-**Implementation Details:**
-
-Files Modified:
-
-- [quicklook_core.py](quicklook_core.py): Added `create_rasterized_holoviews_from_arrays()` function
-- [app.py](app.py): Added checkbox toggle and dual rendering path in `plot_2d_callback()`
-
-Key Functions:
-
-- `create_rasterized_holoviews_from_arrays()`: Creates Datashader-rasterized HoloViews images
-  - Uses `rasterize()` with 1024×1024 output resolution (2^10 for optimal memory alignment)
-  - `aggregator="mean"` for pixel value aggregation
-  - `dynamic=True` enables automatic re-rendering on zoom/pan
-  - Preserves all interactive tools (zoom, pan, wheel_zoom, box_select, etc.)
-
-**Performance Impact:**
-
-| Metric                  | Before (Full Res) | After (Fast Preview) | Improvement   |
-| ----------------------- | ----------------- | -------------------- | ------------- |
-| Data transfer per image | 268 MB            | 8 MB                 | 97% reduction |
-| Total data (16 images)  | ~4.3 GB           | ~128 MB              | 97% reduction |
-| Initial load time       | 16-32s (est.)     | 2-4s (est.)          | ~8× faster    |
-| Browser pixels rendered | 16.7M per image   | 1M per image         | 94% reduction |
-| Pan/zoom responsiveness | Good              | Excellent (dynamic)  | Enhanced      |
-
-**Trade-offs:**
-
-Fast Preview Mode:
-
-- ✓ Much faster loading and smoother interaction
-- ✓ Suitable for initial quick inspection and navigation
-- ✗ Hover shows approximate values (aggregated), not exact pixel values
-- ✗ Saved images are downsampled (1024×1024)
-
-Pixel Inspection Mode:
-
-- ✓ Exact raw pixel values in hover tooltips
-- ✓ Essential for quality assessment and detailed inspection
-- ✗ Slower initial load
-- ✗ May be sluggish with many images displayed
-
-**User Interface:**
-
-- Checkbox in sidebar: "Fast Preview Mode (recommended)" (default: checked)
-- Toast notification on session start explaining the feature (8s duration)
-- Image titles show "[Fast Preview]" indicator when rasterized mode is active
-- Users can toggle between modes and re-plot to switch rendering
-
-**Recommendation:**
-
-- Use Fast Preview Mode for routine quick inspection and navigation (default)
-- Switch to Pixel Inspection Mode when precise pixel values are needed for QA
-
----
 
 ### Data Loading Optimizations (2025-10-31)
 
@@ -812,13 +712,11 @@ Performance Impact:
 
 **Combined Performance Impact:**
 
-| Optimization           | Time Saved                 | Mechanism                    |
-| ---------------------- | -------------------------- | ---------------------------- |
-| pfsConfig Sharing      | ~2.7s                      | Eliminate 15 redundant loads |
-| Butler Caching         | ~1.6-3.2s                  | Reuse instances across arms  |
-| **Total Data Loading** | **~4-6s**                  | **Per 2D plot with 16 arms** |
-| Datashader (display)   | ~8× faster                 | Reduce browser data transfer |
-| **Grand Total**        | **Significantly improved** | **Combined optimizations**   |
+| Optimization           | Time Saved   | Mechanism                    |
+| ---------------------- | ------------ | ---------------------------- |
+| pfsConfig Sharing      | ~2.7s        | Eliminate 15 redundant loads |
+| Butler Caching         | ~1.6-3.2s    | Reuse instances across arms  |
+| **Total Data Loading** | **~4-6s**    | **Per 2D plot with 16 arms** |
 
 **Notes:**
 
