@@ -658,7 +658,9 @@ def plot_2d_callback(event=None):
         show_loading_spinner("Processing 2D images (may take a while)...", tab_index=1)
         tabs.active = 1  # Switch to 2D tab to show spinner
 
-        status_text.object = "**Checking data availability and creating 2D plots (may take a while)...**"
+        status_text.object = (
+            "**Checking data availability and creating 2D plots (may take a while)...**"
+        )
         logger.info(
             f"Attempting to load all {len(all_arms)} arms for {len(spectros)} spectrographs"
         )
@@ -703,9 +705,7 @@ def plot_2d_callback(event=None):
             if array_results is not None and error is None:
                 # Create HoloViews objects from arrays
                 try:
-                    arm_results = create_holoviews_from_arrays(
-                        array_results, spectro
-                    )
+                    arm_results = create_holoviews_from_arrays(array_results, spectro)
                     error = None
                 except Exception as e:
                     logger.error(
@@ -1381,4 +1381,13 @@ pn.template.FastListTemplate(
     sidebar=[sidebar],
     main=[main],
     sidebar_width=320,
+    raw_css=[
+        """
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        * {
+            --body-font: 'Inter', sans-serif !important;
+        }
+        """
+    ],
 ).servable()
