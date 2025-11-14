@@ -93,7 +93,10 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
 - **pfsConfig Tab**: Fiber configuration and pointing information (displayed first)
   - Visit header: pfsDesignId (hex), RA/Dec boresight, position angle, arms, design name
   - Tabulator widget: Interactive table with 250 rows/page
-  - Columns: fiberId, objId, obCode, ra, dec, catId, targetType, fiberStatus, proposalId
+  - Columns: fiberId, spectrograph, objId, obCode, ra, dec, catId, targetType, fiberStatus, proposalId
+  - Column display customization:
+    - Spectrograph: center-aligned
+    - Catalog ID: right-aligned, no thousand separators
   - Header filtering on all columns except ra/dec
   - Visual styling:
     - SCIENCE+GOOD: Bold text (important targets)

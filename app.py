@@ -5,6 +5,7 @@ import threading
 
 import numpy as np
 import panel as pn
+from bokeh.models.widgets.tables import NumberFormatter
 from joblib import Parallel, delayed
 from loguru import logger
 
@@ -381,17 +382,40 @@ def load_data_callback(event=None):
                 "objId": 200,  # Wide enough for 64-bit integers (up to 20 digits)
                 "obCode": 300,  # Double width for observation codes
             },
+            text_align={"spectrograph": "center", "catId": "right"},
+            formatters={
+                "catId": NumberFormatter(
+                    format="0"
+                ),  # Display without thousand separators
+            },
             configuration={
                 "columns": [
-                    {"field": "fiberId", "headerFilter": True},
-                    {"field": "objId", "headerFilter": True},
-                    {"field": "obCode", "headerFilter": True},
-                    {"field": "ra", "headerFilter": False},
-                    {"field": "dec", "headerFilter": False},
-                    {"field": "catId", "headerFilter": True},
-                    {"field": "targetType", "headerFilter": True},
-                    {"field": "fiberStatus", "headerFilter": True},
-                    {"field": "proposalId", "headerFilter": True},
+                    {"field": "fiberId", "headerFilter": True, "title": "Fiber ID"},
+                    {
+                        "field": "spectrograph",
+                        "headerFilter": True,
+                        "title": "Sp",
+                    },
+                    {"field": "objId", "headerFilter": True, "title": "Object ID"},
+                    {"field": "obCode", "headerFilter": True, "title": "OB Code"},
+                    {"field": "ra", "headerFilter": False, "title": "RA"},
+                    {"field": "dec", "headerFilter": False, "title": "Dec"},
+                    {"field": "catId", "headerFilter": True, "title": "Catalog ID"},
+                    {
+                        "field": "targetType",
+                        "headerFilter": True,
+                        "title": "Target Type",
+                    },
+                    {
+                        "field": "fiberStatus",
+                        "headerFilter": True,
+                        "title": "Fiber Status",
+                    },
+                    {
+                        "field": "proposalId",
+                        "headerFilter": True,
+                        "title": "Proposal ID",
+                    },
                 ],
             },
         )
@@ -406,7 +430,7 @@ def load_data_callback(event=None):
 - **pfsDesign ID**: {pfsConfig.pfsDesignId} (0x{pfsConfig.pfsDesignId:016x})
 - **RA**: {pfsConfig.raBoresight:.6f} deg
 - **Dec**: {pfsConfig.decBoresight:.6f} deg
-- **PA**: {pfsConfig.posAng:.6f} deg
+- **PA**: {pfsConfig.posAng:.2f} deg
 - **Arms**: {pfsConfig.arms}
 - **Design Name**: {pfsConfig.designName if hasattr(pfsConfig, 'designName') else 'N/A'}
 """
