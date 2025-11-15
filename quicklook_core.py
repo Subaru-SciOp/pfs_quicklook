@@ -27,6 +27,16 @@ logger.add(sys.stdout, level="INFO")
 # Enable Bokeh backend for HoloViews
 hv.extension("bokeh")
 
+# Disable WebGL for Firefox compatibility
+# Root cause: Firefox WebGL raises "invalid width" error during image texture creation
+# Error: (regl) invalid width in _set_image → texture → create2D (bokeh-gl.min.js)
+# Chrome/Brave work fine, but we cannot control which browser users use
+# Canvas renderer is more compatible across all browsers, especially with VPN
+# TODO: Monitor Bokeh/HoloViews/Firefox updates for WebGL compatibility improvements
+#       and consider re-enabling WebGL in the future for better performance
+hv.renderer('bokeh').webgl = False
+logger.info("HoloViews: WebGL disabled for cross-browser compatibility (Firefox/VPN)")
+
 # --- LSST/PFS imports ---
 try:
     from lsst.daf.butler import Butler

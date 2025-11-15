@@ -1029,6 +1029,49 @@ Valid fiber IDs: 1-2604
 - Responsive: `sizing_mode="scale_width"`
 - Color palette: Category10_10 (cycles through 10 colors)
 
+### WebGL Rendering (Disabled for Cross-Browser Compatibility)
+
+**Status**: WebGL is **disabled** by default in HoloViews/Bokeh rendering.
+
+**Reason**: Firefox compatibility issue with VPN connections.
+
+**Problem Details**:
+- **Error**: `Uncaught (in promise) Error: (regl) invalid width`
+- **Location**: `bokeh-gl.min.js` → `_set_image` → `texture` → `create2D`
+- **Affected Browser**: Firefox (especially via VPN)
+- **Working Browsers**: Chrome, Brave (no issues)
+
+**Root Cause**:
+- Firefox WebGL raises "invalid width" error during image texture creation
+- Likely a timing issue with layout calculation or resource loading
+- VPN connections may exacerbate the problem due to network latency
+
+**Impact of Disabling WebGL**:
+- ✅ **Benefit**: Guaranteed compatibility across all browsers
+- ✅ **Benefit**: More stable rendering over VPN connections
+- ⚠️ **Trade-off**: Slightly slower rendering for large datasets (4k images)
+  - Canvas renderer (CPU-based) vs WebGL renderer (GPU-based)
+  - Initial display: 1-2 seconds slower (acceptable for production use)
+  - Interactive operations (zoom/pan): Minimal difference (Bokeh optimized)
+
+**Implementation**: See [quicklook_core.py:30-36](quicklook_core.py#L30-L36)
+
+```python
+# Disable WebGL for Firefox compatibility
+hv.renderer('bokeh').webgl = False
+```
+
+**Decision Rationale**:
+- Cannot control which browser users will use
+- Availability (100% across all browsers) > Performance (marginal benefit with WebGL)
+- Canvas renderer is production-ready for 4k×4k images
+
+**Future Considerations**:
+- Monitor Bokeh, HoloViews, and Firefox updates for WebGL compatibility improvements
+- Consider re-enabling WebGL when Firefox WebGL issues are resolved
+- Test periodically with new versions to assess if WebGL can be safely re-enabled
+- Potential performance benefit: GPU-accelerated rendering for large datasets (4k images)
+
 ### MultiChoice Widget Options
 
 - **Visit**: No limits (all options shown), dynamically populated on startup
