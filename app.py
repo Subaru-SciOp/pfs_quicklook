@@ -452,6 +452,9 @@ def load_data_callback(event=None):
         )
         pn.state.notifications.success(f"Visit {visit} loaded successfully")
 
+        # Switch to Target Info tab to show loaded data
+        tabs.active = 0
+
         log_md.object = f"""**Data loaded**
 - visit: {visit}
 - total fibers: {num_fibers}
