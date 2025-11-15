@@ -8,10 +8,6 @@ import panel as pn
 from bokeh.models.widgets.tables import NumberFormatter
 from loguru import logger
 
-# Global flag and lock to track if periodic callbacks are registered (server-level)
-_periodic_callbacks_registered = False
-_periodic_callbacks_lock = threading.Lock()
-
 from quicklook_core import (
     ARM_NAMES,
     BASE_COLLECTION,
@@ -62,6 +58,7 @@ def get_session_state():
             "visit_discovery": {"status": None, "result": None, "error": None},
             "visit_cache": {},  # {visit_id: obsdate_utc} - caches validated visits
             "butler_cache": {},  # {(datastore, collection, visit): Butler} - caches Butler instances
+            "periodic_callbacks": {"discovery": None, "refresh": None},
             "config": {  # Session-specific configuration
                 "datastore": None,
                 "base_collection": None,
@@ -71,6 +68,39 @@ def get_session_state():
         }
 
     return ctx.app_state
+
+
+def _stop_periodic_callbacks(state):
+    """Stop any Panel periodic callbacks stored in session state."""
+
+    callbacks = state.get("periodic_callbacks", {})
+    for name, handle in callbacks.items():
+        if handle is None:
+            continue
+        try:
+            handle.stop()
+            logger.debug(f"Stopped periodic callback '{name}' for session")
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.warning(f"Failed to stop periodic callback '{name}': {exc}")
+        finally:
+            callbacks[name] = None
+
+
+def _ensure_session_cleanup_registered():
+    """Register a one-time cleanup hook per Bokeh session to stop callbacks."""
+
+    ctx = pn.state.curdoc.session_context
+    if getattr(ctx, "_pfs_callbacks_cleanup_registered", False):
+        return
+
+    def _cleanup(session_context):
+        app_state = getattr(session_context, "app_state", None)
+        if not app_state:
+            return
+        _stop_periodic_callbacks(app_state)
+
+    pn.state.curdoc.on_session_destroyed(_cleanup)
+    ctx._pfs_callbacks_cleanup_registered = True
 
 
 def should_skip_update(state):
@@ -1296,41 +1326,26 @@ def on_session_created():
     )
     thread.start()
 
-    # Register periodic callbacks only once at server level (thread-safe)
-    # IMPORTANT: These callbacks are shared across ALL sessions. Each callback uses
-    # get_session_state() which returns the state of whichever session is "current"
-    # when the callback fires. In multi-session scenarios, only one session's state
-    # is checked/updated per callback invocation, which is a known limitation.
-    #
-    # NOTE: The refresh_interval used for the periodic callback period is read only once
-    # during first registration. Changes to VISIT_REFRESH_INTERVAL in .env will only
-    # affect the callback period after a server restart. However, visit discovery itself
-    # uses session-specific config values from get_config(), so each session can have
-    # different datastore/collection/obsdate values that reload properly on browser refresh.
-    global _periodic_callbacks_registered
-    with _periodic_callbacks_lock:
-        if not _periodic_callbacks_registered:
-            # Start periodic callback to check for results (every 500ms)
-            # The callback will automatically stop when it returns False
-            pn.state.add_periodic_callback(check_visit_discovery, period=500)
+    # Register per-session periodic callbacks so every browser session remains independent
+    _ensure_session_cleanup_registered()
+    _stop_periodic_callbacks(session_state)
 
-            # If auto-refresh is enabled, set up periodic refresh
-            if refresh_interval > 0:
-                refresh_interval_ms = (
-                    refresh_interval * 1000
-                )  # Convert seconds to milliseconds
-                logger.info(
-                    f"Auto-refresh enabled: visit list will update every {refresh_interval} seconds"
-                )
-                pn.state.add_periodic_callback(
-                    trigger_visit_refresh, period=refresh_interval_ms
-                )
+    callbacks = session_state.get("periodic_callbacks", {})
+    callbacks["discovery"] = pn.state.add_periodic_callback(
+        check_visit_discovery, period=500
+    )
+    logger.info("Registered visit discovery callback for this session")
 
-            # Mark callbacks as registered globally
-            _periodic_callbacks_registered = True
-            logger.info(
-                "Periodic callbacks registered (server-level, shared across sessions)"
-            )
+    if refresh_interval > 0:
+        refresh_interval_ms = refresh_interval * 1000
+        callbacks["refresh"] = pn.state.add_periodic_callback(
+            trigger_visit_refresh, period=refresh_interval_ms
+        )
+        logger.info(
+            f"Auto-refresh enabled for this session: visit list every {refresh_interval} seconds"
+        )
+    else:
+        callbacks["refresh"] = None
 
 
 # Register the callback to run on each session start
