@@ -84,7 +84,7 @@ def parse_obsdate_utc(env_value):
 
 
 # Load configuration file
-load_dotenv(verbose=True)
+load_dotenv(override=True, verbose=True)
 
 DATASTORE = os.environ.get("PFS_DATASTORE", "/work/datastore")
 BASE_COLLECTION = os.environ.get("PFS_BASE_COLLECTION", "u/obsproc/s25a/20250520b")
