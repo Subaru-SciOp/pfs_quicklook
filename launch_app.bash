@@ -61,6 +61,8 @@ if [[ "$MODE" == "dev" ]]; then
     --address "$ADDRESS" \
     --port "$PORT" \
     --allow-websocket-origin="$ORIGIN:$PORT" \
+    --allow-websocket-origin="localhost:$PORT" \
+    --allow-websocket-origin="127.0.0.1:$PORT" \
     --prefix quicklook \
     --dev
 else
@@ -70,6 +72,8 @@ else
     --address "$ADDRESS" \
     --port "$PORT" \
     --allow-websocket-origin="$ORIGIN:$PORT" \
+    --allow-websocket-origin="localhost:$PORT" \
+    --allow-websocket-origin="127.0.0.1:$PORT" \
     --prefix quicklook \
     --num-threads 8
 fi
