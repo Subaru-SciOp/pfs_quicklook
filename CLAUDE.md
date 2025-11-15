@@ -30,7 +30,7 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
   - Uses public API (custom attribute on `session_context`) for stability across Panel versions
   - Prevents interference between multiple simultaneous users
   - Compatible with `--num-threads` for concurrent request handling
-  - See [SESSION_STATE_MIGRATION.md](SESSION_STATE_MIGRATION.md) for implementation details
+  - See [Session State Management](#session-state-management) section below for implementation details
 
 #### User Interface (app.py)
 
@@ -253,9 +253,22 @@ pfs_quicklook/
 ├── launch_app.bash                 # Environment setup and launch script
 ├── requirements.txt                # Python dependencies (Panel, etc.)
 ├── pyproject.toml                  # Project metadata
-├── README.md                       # Project documentation
-├── CLAUDE.md                       # This file - development documentation
-├── SESSION_STATE_MIGRATION.md      # Session state implementation details
+├── README.md                       # Concise project overview with documentation links
+├── CLAUDE.md                       # This file - comprehensive technical documentation
+├── docs/                           # User and administrator documentation
+│   ├── README.md                   # Documentation navigation hub
+│   ├── setup.md                    # Administrator setup guide
+│   ├── troubleshooting.md          # Common issues and solutions
+│   ├── user-guide/                 # User guide for observers
+│   │   ├── index.md                # User guide overview
+│   │   ├── loading-data.md         # Loading visit data
+│   │   ├── 2d-images.md            # Working with 2D images
+│   │   └── 1d-spectra.md           # Working with 1D spectra
+│   └── img/                        # Screenshots
+│       ├── screenshot_loadvisit.png
+│       ├── screenshot_2dimage.png
+│       ├── screenshot_pfsmerged.png
+│       └── screenshot_1dspec.png
 ├── .env                            # Environment configuration (datastore, collection, hostname)
 └── .gitignore                      # Git ignore rules
 ```
@@ -980,10 +993,11 @@ The PFS Butler uses a custom dimension structure that differs from standard LSST
    - Custom color schemes/themes
    - Fiber map visualization (focal plane view)
 
-3. **Documentation**
-   - User manual with screenshots
-   - Deployment guide for different environments
-   - Troubleshooting guide with common issues
+3. **Documentation** (Completed 2025-01-15)
+   - ✅ User manual with screenshots - See [docs/user-guide/](docs/user-guide/)
+   - ✅ Setup guide for administrators - See [docs/setup.md](docs/setup.md)
+   - ✅ Troubleshooting guide with common issues - See [docs/troubleshooting.md](docs/troubleshooting.md)
+   - Documentation organized by audience (observers, administrators, developers)
 
 ## Technical Notes
 
