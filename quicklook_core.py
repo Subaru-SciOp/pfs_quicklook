@@ -588,9 +588,10 @@ def _create_detectormap_overlay(
             f"getFiberId() returned {len(fiber_ids_array)} IDs but expected {nFibers}"
         )
 
-    # Initialize output arrays
-    fiber_id_map = np.full((height, width), -1, dtype=np.int32)
-    wavelength_map = np.full((height, width), np.nan, dtype=np.float64)
+    # Initialize output arrays using compact dtypes
+    INVALID_FIBER_ID = np.uint16(0)
+    fiber_id_map = np.full((height, width), INVALID_FIBER_ID, dtype=np.uint16)
+    wavelength_map = np.full((height, width), np.nan, dtype=np.float32)
 
     # Create X pixel coordinates array (reused for every row)
     x_pixels = np.arange(width, dtype=np.float64)
@@ -626,11 +627,13 @@ def _create_detectormap_overlay(
         assignment_idx = np.searchsorted(boundaries, x_pixels, side="right") - 1
         assignment_idx = np.clip(assignment_idx, 0, len(x_sorted) - 1)
 
-        fiber_id_map[y, :] = fiber_sorted[assignment_idx]
-        wavelength_map[y, :] = wavelengths_sorted[assignment_idx]
+        fiber_id_map[y, :] = fiber_sorted[assignment_idx].astype(np.uint16, copy=False)
+        wavelength_map[y, :] = wavelengths_sorted[assignment_idx].astype(
+            np.float32, copy=False
+        )
 
     # Count valid pixels
-    valid_pixels = np.sum(fiber_id_map >= 0)
+    valid_pixels = np.count_nonzero(fiber_id_map)
     total_pixels = height * width
 
     if valid_pixels == 0:
@@ -639,7 +642,7 @@ def _create_detectormap_overlay(
         )
         return None, None
 
-    fiber_ids_valid = fiber_id_map[fiber_id_map >= 0]
+    fiber_ids_valid = fiber_id_map[fiber_id_map > 0]
     wavelength_valid = wavelength_map[np.isfinite(wavelength_map)]
 
     if wavelength_valid.size == 0:
@@ -654,7 +657,7 @@ def _create_detectormap_overlay(
         f"Arm {arm}, SM{spectrograph}: Created detectorMap overlay - "
         f"Valid pixels: {valid_pixels}/{total_pixels} "
         f"({100*valid_pixels/total_pixels:.1f}%), "
-        f"Fiber ID range: [{np.min(fiber_ids_valid)}, {np.max(fiber_ids_valid)}], "
+        f"Fiber ID range: [{int(np.min(fiber_ids_valid))}, {int(np.max(fiber_ids_valid))}], "
         f"{wavelength_summary}"
     )
 
@@ -758,12 +761,12 @@ def _build_single_2d_array(
             del _flux
         exp.image -= image
 
-        # Get numpy array
-        image_array = exp.image.array.astype(np.float64)
+        # Get numpy array with compact dtype
+        image_array = exp.image.array.astype(np.float32)
 
-        # Apply astropy transform
+        # Apply astropy transform and keep float32
         transform = get_transform(scale_algo)
-        transformed_array = transform(image_array)
+        transformed_array = transform(image_array).astype(np.float32)
 
         logger.info(
             f"Arm {arm}, SM{spectrograph}: Transformed array range: [{transformed_array.min()}, {transformed_array.max()}]"
@@ -934,10 +937,10 @@ def create_holoviews_from_arrays(array_results, spectrograph):
                     # Stack arrays for multiple vdims: [scaled for display, raw for hover, fiber ID, wavelength]
                     combined_data = np.stack(
                         [
-                            flipped_array,
-                            flipped_raw,
-                            flipped_fiber_id,
-                            flipped_wavelength,
+                            flipped_array.astype(np.float32, copy=False),
+                            flipped_raw.astype(np.float32, copy=False),
+                            flipped_fiber_id.astype(np.float32, copy=False),
+                            flipped_wavelength.astype(np.float32, copy=False),
                         ],
                         axis=-1,
                     )
@@ -949,7 +952,13 @@ def create_holoviews_from_arrays(array_results, spectrograph):
                     ]
                 else:
                     # Stack arrays for basic vdims only: [scaled for display, raw for hover]
-                    combined_data = np.stack([flipped_array, flipped_raw], axis=-1)
+                    combined_data = np.stack(
+                        [
+                            flipped_array.astype(np.float32, copy=False),
+                            flipped_raw.astype(np.float32, copy=False),
+                        ],
+                        axis=-1,
+                    )
                     vdims_list = ["intensity", "raw_value"]
 
                 # Set bounds: (left, bottom, right, top)
