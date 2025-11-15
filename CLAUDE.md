@@ -456,7 +456,11 @@ app_state = {
 
 - `PFS_DATASTORE`: Path to Butler datastore (default: `/work/datastore`)
 - `PFS_BASE_COLLECTION`: Base collection name (default: `u/obsproc/s25a/20250520b`)
-- `PFS_OBSDATE_UTC`: Observation date for visit filtering (format: "YYYY-MM-DD", default: today's date in UTC)
+- `PFS_OBSDATE_UTC`: Observation date for visit filtering
+  - Format: "YYYY-MM-DD" (e.g., `2025-11-15`)
+  - Special value: `"TODAY"` (case-insensitive) automatically uses today's UTC date
+  - Default: today's date in UTC if not specified
+  - Example: `PFS_OBSDATE_UTC="TODAY"` updates to current date on each session start
 - `PFS_VISIT_REFRESH_INTERVAL`: Auto-refresh interval in seconds (default: 300, set to 0 to disable)
 - `PFS_APP_HOSTNAME`: Server hostname for deployment (e.g., `your-server.example.com`)
   - **Required for production launch**: Launch script validates current hostname matches this value
