@@ -195,7 +195,7 @@ This guide provides solutions to common issues you may encounter while using PFS
 **Expected times**:
 - Visit data loading: 1-3 seconds
 - Visit discovery: 10-20 seconds (first time)
-- 2D image creation (Fast Preview): 2-4 seconds per image
+- 2D image creation: 30-60 seconds for all selected spectrographs
 - 1D spectra: 2-5 seconds
 
 **Solutions**:
@@ -277,12 +277,7 @@ This guide provides solutions to common issues you may encounter while using PFS
    - Look for warning messages about missing arms
    - Contact data reduction team if data expected
 
-4. **Try different rendering mode**:
-   - If Fast Preview Mode fails, try Pixel Inspection Mode
-   - Or vice versa
-   - Report which mode works/fails
-
-5. **Reload and retry**:
+4. **Reload and retry**:
    - Reload browser page (F5)
    - Load visit data again
    - Retry plotting
@@ -362,10 +357,6 @@ This guide provides solutions to common issues you may encounter while using PFS
    - If specific to one visit, may be data issue
    - Consult with data reduction team
 
-5. **Try different rendering mode**:
-   - Switch between Fast Preview and Pixel Inspection
-   - Report which mode has issues
-
 ---
 
 ### Hover Tooltips Don't Appear
@@ -402,27 +393,21 @@ This guide provides solutions to common issues you may encounter while using PFS
 **Symptom**: 2D image rendering takes much longer than expected
 
 **Expected times**:
-- Fast Preview Mode: ~2-4 seconds per image
-- Pixel Inspection Mode: ~16-32 seconds per image
-- 4 spectrographs × 4 arms = 16 images total
+- Typically 30-60 seconds for all selected spectrographs
+- Time varies based on number of spectrographs and arms selected
 
 **Solutions**:
 
-1. **Use Fast Preview Mode**:
-   - Ensure "Fast Preview Mode" checkbox is checked
-   - Provides 8× speedup over Pixel Inspection Mode
-   - Recommended for routine use
-
-2. **Reduce number of spectrographs**:
+1. **Reduce number of spectrographs**:
    - Deselect unneeded spectrographs before plotting
    - Fewer spectrographs = faster rendering
 
-3. **Check server load**:
+2. **Check server load**:
    - Contact administrator if consistently slow
    - Server may be under heavy load
    - Multiple concurrent users affect performance
 
-4. **Verify network connection**:
+3. **Verify network connection**:
    - Slow network to datastore affects loading
    - VPN connections may be slower
    - Test network speed
@@ -475,15 +460,11 @@ This guide provides solutions to common issues you may encounter while using PFS
    - Free up browser memory
    - Reduce CPU usage
 
-3. **Use Fast Preview Mode** for 2D:
-   - Provides better interactive performance
-   - Pixel Inspection Mode more resource-intensive
-
-4. **Refresh browser page**:
+3. **Refresh browser page**:
    - Clear accumulated JavaScript state
    - Reload and recreate plots
 
-5. **Update browser**:
+4. **Update browser**:
    - Ensure latest browser version
    - Newer versions have better performance
 

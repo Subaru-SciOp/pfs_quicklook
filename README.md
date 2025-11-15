@@ -8,7 +8,6 @@ This app replaces the previous Jupyter notebook-based quicklook tool ([check_qui
 
 - **Fiber configuration viewer** with interactive table showing pointing and fiber details
 - **Interactive 2D/1D spectral visualization** with zoom, pan, and hover tools
-- **Fast Preview Mode** for 2D images (8× faster rendering)
 - **Multi-user support** with per-session state isolation
 - **Automatic visit discovery** with configurable auto-refresh
 - **Performance optimizations** (parallel processing, intelligent caching)

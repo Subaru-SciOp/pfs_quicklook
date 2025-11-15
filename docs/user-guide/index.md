@@ -12,8 +12,6 @@ PFS QuickLook is a web application that provides interactive visualization of 2D
 
 - **Fiber Configuration Viewer**: Interactive table showing fiber pointing details, target information, and fiber status
 - **2D Spectral Images**: Sky-subtracted detector images with interactive zoom and pan
-  - Fast Preview Mode: 8× faster rendering for quick inspection
-  - Pixel Inspection Mode: Full resolution with exact pixel values
 - **1D Spectra Visualization**: Interactive plots with fiber selection and filtering
 - **1D Gallery View**: 2D representation showing all fiber spectra at once
 - **Automatic Visit Discovery**: Background discovery with configurable auto-refresh

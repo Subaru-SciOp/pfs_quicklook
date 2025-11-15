@@ -12,75 +12,22 @@ Before creating 2D images, you must:
 1. [Load visit data](loading-data.md) first
 2. Ensure the "Loaded visit" status message is displayed
 
-## Rendering Modes
-
-PFS QuickLook offers two rendering modes for 2D images, optimized for different use cases:
-
-### Fast Preview Mode (Default, Recommended)
-
-**Best for**: Quick inspection and routine quality checks
-
-**Characteristics**:
-- **8× faster rendering** using Datashader rasterization
-- Loading time: ~2-4 seconds per image
-- Total time for 16 images (4 spectrographs × 4 arms): ~30-60 seconds
-- Optimized for screen display
-- Ideal for quick scans and initial quality assessment
-
-**When to use**:
-- Routine quality checks
-- Scanning through multiple visits
-- Initial data inspection
-- When you need quick feedback
-
-### Pixel Inspection Mode
-
-**Best for**: Detailed quality assessment and exact pixel value inspection
-
-**Characteristics**:
-- **Full resolution** rendering with exact pixel values
-- Loading time: ~16-32 seconds per image
-- Total time for 16 images: ~4-8 minutes
-- Hover tool shows exact pixel coordinates and intensity values
-- Ideal for detailed quality assessment
-
-**When to use**:
-- Detailed quality assessment
-- Investigating specific features or artifacts
-- When you need exact pixel values
-- Follow-up inspection after finding issues in Fast Preview Mode
-
-### Switching Between Modes
-
-To switch modes:
-
-1. Locate the **"Fast Preview Mode"** checkbox in the Plot Controls section
-2. **Checked** (default): Uses Fast Preview Mode (8× faster)
-3. **Unchecked**: Uses Pixel Inspection Mode (full resolution)
-4. Click **"Plot 2D"** button to render images with selected mode
-
-**Note**: You can switch modes and re-plot at any time. Previous plots are cleared when you create new ones.
-
 ## Creating 2D Images
 
 ### Step-by-Step Instructions
 
-1. **Select Rendering Mode** (optional):
-   - Fast Preview Mode is selected by default (recommended for initial inspection)
-   - Uncheck "Fast Preview Mode" if you need pixel-perfect rendering
-
-2. **Click "Plot 2D" Button**:
+1. **Click "Plot 2D" Button**:
    - Button is enabled after loading visit data
    - Application begins processing images
    - Progress indicated in status display
 
-3. **Wait for Processing**:
-   - Fast Preview Mode: ~30-60 seconds for all selected spectrographs
-   - Pixel Inspection Mode: ~4-8 minutes for all selected spectrographs
+2. **Wait for Processing**:
+   - Processing time varies based on number of selected spectrographs and arms
+   - Typically 30-60 seconds for all selected spectrographs
    - UI remains responsive during processing
    - You can continue working in other tabs
 
-4. **View Results**:
+3. **View Results**:
    - Application automatically switches to the **2D Images** tab
    - Images appear in tabbed layout (one tab per spectrograph)
 
@@ -132,9 +79,6 @@ Each 2D image plot provides interactive controls through the Bokeh toolbar:
 - **Display**: Tooltip shows:
   - X, Y pixel coordinates
   - Intensity value at that position
-- **Mode-dependent**:
-  - Fast Preview Mode: Shows approximate values
-  - Pixel Inspection Mode: Shows exact pixel values
 
 ### Reset
 - **Action**: Click the reset button in the toolbar
@@ -195,7 +139,8 @@ Compare the same positions across different spectrographs:
 
 ### Workflow for Quick Inspection
 
-1. Use **Fast Preview Mode** (default)
+For routine quality checks:
+1. Load visit data
 2. Click "Plot 2D"
 3. Quickly scan all spectrograph tabs
 4. Look for obvious issues or anomalies
@@ -203,12 +148,12 @@ Compare the same positions across different spectrographs:
 
 ### Workflow for Detailed Inspection
 
-1. Start with **Fast Preview Mode** for initial scan
-2. If you spot potential issues:
-   - Switch to **Pixel Inspection Mode**
-   - Re-plot the 2D images
-   - Use zoom and hover to examine details
-   - Note exact pixel coordinates and values if needed
+For thorough quality assessment:
+1. Load visit data
+2. Click "Plot 2D"
+3. Use zoom to focus on regions of interest
+4. Use hover to examine pixel values and coordinates
+5. Compare features across arms and spectrographs
 
 ### Multi-Window Comparison
 
@@ -240,8 +185,7 @@ When you click "Plot 2D", the application:
    - Subtracts from calibrated exposure
 
 3. **Applies scaling**:
-   - Fast Preview Mode: Automatic scaling for display
-   - Pixel Inspection Mode: Preserves intensity values
+   - Automatic scaling for optimal display
 
 4. **Creates interactive plots**:
    - HoloViews Image objects with Bokeh backend
@@ -273,10 +217,9 @@ For performance:
 **Symptom**: Rendering takes much longer than expected
 
 **Solutions**:
-1. Ensure **Fast Preview Mode** is checked for quick rendering
-2. Deselect unneeded spectrographs before plotting
-3. Check server load (contact administrator if consistently slow)
-4. Check network connection to datastore
+1. Deselect unneeded spectrographs before plotting
+2. Check server load (contact administrator if consistently slow)
+3. Check network connection to datastore
 
 ### Missing Arms
 
