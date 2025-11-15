@@ -815,6 +815,107 @@ def _build_single_2d_array(
         return (arm, None, None, error_msg)
 
 
+def _run_arm_jobs(
+    datastore: str,
+    base_collection: str,
+    visit: int,
+    tasks: list[tuple[int, str]],
+    subtract_sky: bool,
+    enable_detmap_overlay: bool,
+    fiber_ids,
+    scale_algo: str,
+    n_jobs: int,
+    pfsConfig_preloaded=None,
+    butler_cache=None,
+):
+    """Execute a list of (spectrograph, arm) jobs in parallel and group results.
+
+    Returns
+    -------
+    dict
+        Mapping of spectrograph -> list of (arm, array, metadata, error_msg)
+    """
+    if not tasks:
+        return {}
+
+    logger.info(
+        "Building 2D arrays for %d task(s) with unified parallel processing (n_jobs=%s)",
+        len(tasks),
+        n_jobs,
+    )
+
+    def _execute(task):
+        spectrograph, arm = task
+        arm_name, array, metadata, err = _build_single_2d_array(
+            datastore,
+            base_collection,
+            visit,
+            spectrograph,
+            arm,
+            subtract_sky,
+            enable_detmap_overlay,
+            fiber_ids,
+            scale_algo,
+            pfsConfig_preloaded,
+            butler_cache,
+        )
+        return spectrograph, arm_name, array, metadata, err
+
+    raw_results = Parallel(n_jobs=n_jobs, verbose=10)(
+        delayed(_execute)(task) for task in tasks
+    )
+
+    grouped: dict[int, list] = {}
+    for spectrograph, arm_name, array, metadata, err in raw_results:
+        grouped.setdefault(spectrograph, []).append((arm_name, array, metadata, err))
+
+    return grouped
+
+
+def build_2d_arrays_multi_spectrograph(
+    datastore: str,
+    base_collection: str,
+    visit: int,
+    spectrographs: list[int],
+    arms: list[str],
+    subtract_sky: bool = True,
+    enable_detmap_overlay: bool = False,
+    fiber_ids=None,
+    scale_algo: str = "zscale",
+    n_jobs: int = 16,
+    pfsConfig_preloaded=None,
+    butler_cache=None,
+):
+    """Build arrays for every (spectrograph, arm) pair using a single Parallel call."""
+
+    if not spectrographs:
+        raise ValueError("At least one spectrograph must be specified")
+    if not arms:
+        raise ValueError("At least one arm must be specified")
+
+    tasks = [(spectro, arm) for spectro in spectrographs for arm in arms]
+    grouped = _run_arm_jobs(
+        datastore,
+        base_collection,
+        visit,
+        tasks,
+        subtract_sky,
+        enable_detmap_overlay,
+        fiber_ids,
+        scale_algo,
+        n_jobs,
+        pfsConfig_preloaded,
+        butler_cache,
+    )
+
+    arm_order = {arm: idx for idx, arm in enumerate(arms)}
+    for spectro in spectrographs:
+        entries = grouped.setdefault(spectro, [])
+        entries.sort(key=lambda item: arm_order.get(item[0], float("inf")))
+
+    return grouped
+
+
 def build_2d_arrays_multi_arm(
     datastore: str,
     base_collection: str,
@@ -825,63 +926,30 @@ def build_2d_arrays_multi_arm(
     enable_detmap_overlay: bool = False,
     fiber_ids=None,
     scale_algo: str = "zscale",
-    n_jobs: int = -1,
+    n_jobs: int = 16,
     pfsConfig_preloaded=None,
     butler_cache=None,
 ):
-    """
-    Build numpy arrays (pickle-able) for multiple arms.
-    This function is safe to use in parallel processing.
+    """Backward-compatible wrapper that reuses unified parallel execution."""
 
-    Parameters
-    ----------
-    arms : list of str
-        List of arms to display, e.g., ['b', 'r', 'n'] or ['b', 'm', 'n']
-    n_jobs : int, optional
-        Number of parallel jobs. -1 means use all available CPUs (default: -1)
-    pfsConfig_preloaded : pfs.datamodel.PfsConfig, optional
-        Pre-loaded pfsConfig object shared across all arms. Passed to each
-        _build_single_2d_array call to avoid redundant loading.
-        Default is None (each arm loads independently).
-    butler_cache : dict, optional
-        Dictionary for caching Butler instances. Passed to each
-        _build_single_2d_array call to enable Butler reuse.
-        Default is None (no caching).
-
-    Returns
-    -------
-    list of tuples
-        List of (arm, transformed_array, metadata, error_msg) tuples, one per arm
-    """
-    n_arms = len(arms)
-    if n_arms == 0:
-        raise ValueError("At least one arm must be specified")
-
-    logger.info(
-        f"Building 2D arrays for SM{spectrograph} with {n_arms} arm(s) using parallel processing (n_jobs={n_jobs})"
+    grouped = build_2d_arrays_multi_spectrograph(
+        datastore,
+        base_collection,
+        visit,
+        [spectrograph],
+        arms,
+        subtract_sky,
+        enable_detmap_overlay,
+        fiber_ids,
+        scale_algo,
+        n_jobs,
+        pfsConfig_preloaded,
+        butler_cache,
     )
-
-    # Parallel processing: build transformed arrays (pickle-able)
-    # Pass pre-loaded pfsConfig and butler_cache to avoid redundant operations
-    array_results = Parallel(n_jobs=n_jobs, verbose=10)(
-        delayed(_build_single_2d_array)(
-            datastore,
-            base_collection,
-            visit,
-            spectrograph,
-            arm,
-            subtract_sky,
-            enable_detmap_overlay,
-            fiber_ids,
-            scale_algo,
-            pfsConfig_preloaded,  # Share pfsConfig across all arms
-            butler_cache,  # Share Butler cache across all arms
-        )
-        for arm in arms
-    )
-
-    logger.info(f"Arrays built for SM{spectrograph}")
-    return array_results
+    entries = grouped.get(spectrograph, [])
+    arm_order = {arm: idx for idx, arm in enumerate(arms)}
+    entries.sort(key=lambda item: arm_order.get(item[0], float("inf")))
+    return entries
 
 
 def create_holoviews_from_arrays(array_results, spectrograph):
@@ -1059,7 +1127,7 @@ def build_2d_figure_multi_arm(
     overlay: bool = False,
     fiber_ids=None,
     scale_algo: str = "zscale",
-    n_jobs: int = -1,
+    n_jobs: int = 16,
 ):
     """
     Build HoloViews images with multiple arms (b, r, n, m) for a single spectrograph.
@@ -1070,7 +1138,7 @@ def build_2d_figure_multi_arm(
     arms : list of str
         List of arms to display, e.g., ['b', 'r', 'n'] or ['b', 'm', 'n']
     n_jobs : int, optional
-        Number of parallel jobs. -1 means use all available CPUs (default: -1)
+        Number of parallel jobs. Default is 16 to match the maximum number of arm tasks.
 
     Returns
     -------

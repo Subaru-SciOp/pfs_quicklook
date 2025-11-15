@@ -6,7 +6,6 @@ import threading
 import numpy as np
 import panel as pn
 from bokeh.models.widgets.tables import NumberFormatter
-from joblib import Parallel, delayed
 from loguru import logger
 
 # Global flag and lock to track if periodic callbacks are registered (server-level)
@@ -21,7 +20,7 @@ from quicklook_core import (
     VISIT_REFRESH_INTERVAL,
     build_1d_bokeh_figure_single_visit,
     build_1d_spectra_as_image,
-    build_2d_arrays_multi_arm,
+    build_2d_arrays_multi_spectrograph,
     create_holoviews_from_arrays,
     create_pfsconfig_dataframe,
     discover_visits,
@@ -669,45 +668,35 @@ def plot_2d_callback(event=None):
             f"Attempting to load all {len(all_arms)} arms for {len(spectros)} spectrographs"
         )
 
-        # Process spectrographs in parallel (only array generation)
-        # Two-level parallelization: spectrographs in parallel, arms within each spectrograph in parallel
+        logger.info(
+            f"Building arrays for {len(spectros)} spectrographs × {len(all_arms)} arms with unified parallelism"
+        )
         spectrograph_panels = {}
 
-        def build_arrays_for_spectrograph(spectro):
-            """Build arrays for a single spectrograph (pickle-able)"""
-            logger.info(f"Building 2D arrays for SM{spectro} with all arms {all_arms}")
-            try:
-                array_results = build_2d_arrays_multi_arm(
-                    datastore=datastore,
-                    base_collection=base_collection,
-                    visit=visit,
-                    spectrograph=spectro,
-                    arms=all_arms,
-                    subtract_sky=subtract_sky,
-                    enable_detmap_overlay=enable_detmap_overlay,
-                    fiber_ids=fibers if enable_detmap_overlay else None,
-                    scale_algo=scale_algo,
-                    n_jobs=-1,  # Use all available CPUs for arms within each spectrograph
-                    pfsConfig_preloaded=pfs_config_shared,  # Share pfsConfig across all arms
-                    butler_cache=butler_cache,  # Share Butler cache across all arms
-                )
-                return (spectro, array_results, None)
-            except Exception as e:
-                logger.error(f"Failed to build 2D arrays for SM{spectro}: {e}")
-                return (spectro, None, str(e))
+        try:
+            array_results_by_spec = build_2d_arrays_multi_spectrograph(
+                datastore=datastore,
+                base_collection=base_collection,
+                visit=visit,
+                spectrographs=spectros,
+                arms=all_arms,
+                subtract_sky=subtract_sky,
+                enable_detmap_overlay=enable_detmap_overlay,
+                fiber_ids=fibers if enable_detmap_overlay else None,
+                scale_algo=scale_algo,
+                n_jobs=16,
+                pfsConfig_preloaded=pfs_config_shared,
+                butler_cache=butler_cache,
+            )
+        except Exception as e:
+            logger.error(f"Failed to build 2D arrays: {e}")
+            raise
 
-        # Parallel processing across spectrographs (arrays only, pickle-able)
-        logger.info(f"Building arrays for {len(spectros)} spectrographs in parallel")
-        array_results_all = Parallel(n_jobs=len(spectros), verbose=10)(
-            delayed(build_arrays_for_spectrograph)(spectro) for spectro in spectros
-        )
-
-        # Create HoloViews objects in main thread (not pickle-able)
         logger.info("Arrays built, now creating HoloViews images in main thread")
 
-        for spectro, array_results, error in array_results_all:
-            if array_results is not None and error is None:
-                # Create HoloViews objects from arrays
+        for spectro in spectros:
+            array_results = array_results_by_spec.get(spectro, [])
+            if array_results is not None:
                 try:
                     arm_results = create_holoviews_from_arrays(array_results, spectro)
                     error = None
@@ -719,6 +708,8 @@ def plot_2d_callback(event=None):
                     error = str(e)
             else:
                 arm_results = None
+                error = "No array results available"
+
             logger.info(
                 f"Processing SM{spectro}: arm_results type={type(arm_results)}, error={error}"
             )
