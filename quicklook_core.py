@@ -41,14 +41,54 @@ except Exception as _import_err:
     raise _import_err
 
 
+# --- Configuration helpers ---
+def parse_obsdate_utc(env_value):
+    """Parse PFS_OBSDATE_UTC value, handling 'TODAY' keyword.
+
+    Parameters
+    ----------
+    env_value : str or None
+        Value from PFS_OBSDATE_UTC environment variable.
+        Special value 'TODAY' (case-insensitive) will be replaced with today's UTC date.
+
+    Returns
+    -------
+    str
+        Date string in YYYY-MM-DD format
+
+    Notes
+    -----
+    - If env_value is None or empty, returns today's UTC date
+    - If env_value equals 'TODAY' (case-insensitive), returns today's UTC date
+    - Otherwise, returns env_value as-is (assumed to be YYYY-MM-DD format)
+
+    Examples
+    --------
+    >>> parse_obsdate_utc("TODAY")  # Returns today's date
+    '2025-11-15'
+    >>> parse_obsdate_utc("2025-05-20")  # Returns as-is
+    '2025-05-20'
+    >>> parse_obsdate_utc(None)  # Returns today's date
+    '2025-11-15'
+    """
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    if env_value is None or env_value.strip() == "":
+        return today
+
+    if env_value.strip().upper() == "TODAY":
+        logger.info(f"PFS_OBSDATE_UTC='TODAY' keyword detected, using today's date: {today}")
+        return today
+
+    return env_value.strip()
+
+
 # Load configuration file
 load_dotenv(verbose=True)
 
 DATASTORE = os.environ.get("PFS_DATASTORE", "/work/datastore")
 BASE_COLLECTION = os.environ.get("PFS_BASE_COLLECTION", "u/obsproc/s25a/20250520b")
-OBSDATE_UTC = os.environ.get(
-    "PFS_OBSDATE_UTC", datetime.now(timezone.utc).strftime("%Y-%m-%d")
-)
+OBSDATE_UTC = parse_obsdate_utc(os.environ.get("PFS_OBSDATE_UTC"))
 VISIT_REFRESH_INTERVAL = int(
     os.environ.get("PFS_VISIT_REFRESH_INTERVAL", "300")
 )  # seconds, 0 = disabled
@@ -80,9 +120,7 @@ def reload_config():
     load_dotenv(override=True, verbose=True)
     datastore = os.environ.get("PFS_DATASTORE", "/work/datastore")
     base_collection = os.environ.get("PFS_BASE_COLLECTION", "u/obsproc/s25a/20250520b")
-    obsdate_utc = os.environ.get(
-        "PFS_OBSDATE_UTC", datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    )
+    obsdate_utc = parse_obsdate_utc(os.environ.get("PFS_OBSDATE_UTC"))
     refresh_interval = int(os.environ.get("PFS_VISIT_REFRESH_INTERVAL", "300"))
     logger.info(
         f"Config reloaded - DATASTORE: {datastore}, BASE_COLLECTION: {base_collection}, "

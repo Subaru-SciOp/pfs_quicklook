@@ -62,9 +62,10 @@ You need to have access to one of PFSA servers to run this app. Also, you need a
     # name of the base collection for the reduction
     PFS_BASE_COLLECTION="<collection name for the night>"
 
-    # observation date to be considered (YYYY-MM-DD format)
-    # only single data is allowed
-    PFS_OBSDATE_UTC="2025-05-26"
+    # observation date to be considered
+    # Format: YYYY-MM-DD (e.g., 2025-05-26) or "TODAY" (automatically uses today's UTC date)
+    # only single date is allowed
+    PFS_OBSDATE_UTC="TODAY"
 
     # Auto-refresh interval for visit list (in seconds)
     # Set to 0 to disable auto-refresh
