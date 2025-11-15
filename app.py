@@ -168,7 +168,7 @@ btn_clear_selection = pn.widgets.Button(
 subtract_sky_chk = pn.widgets.Checkbox(name="Sky subtraction", value=True)
 detmap_overlay_switch = pn.widgets.Switch(
     name="Detector Map Overlay",
-    value=False,
+    value=True,
     sizing_mode="fixed",
     width=200,
     align=("start", "center"),  # Horizontal: left, Vertical: center

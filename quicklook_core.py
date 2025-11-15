@@ -518,7 +518,8 @@ def _create_detectormap_overlay(
     """Create fiber ID and wavelength maps from detectorMap
 
     This function generates 2D arrays mapping each pixel to its fiber ID and wavelength.
-    Uses optimized sampling and interpolation to reduce computation time.
+    A Voronoi-style assignment is computed row-by-row to avoid allocating large
+    (width × nFibers × chunk) tensors that previously exhausted memory.
 
     Parameters
     ----------
@@ -542,9 +543,17 @@ def _create_detectormap_overlay(
     wavelength_map : numpy.ndarray or None
         2D array of wavelengths for each pixel, or None if disabled
 
+    Raises
+    ------
+    ValueError
+        If detectorMap dimensions do not match image dimensions
+
     Notes
     -----
     When enable_overlay=False, returns (None, None) to reduce data transfer size.
+
+    Performance optimization uses detectorMap's vectorized methods to fetch per-row
+    center positions and wavelengths, while keeping the assignment streaming in Y.
     """
     # Return early if overlay is disabled
     if not enable_overlay:
@@ -552,85 +561,104 @@ def _create_detectormap_overlay(
 
     logger.info(f"Creating detectorMap overlay for arm {arm}, SM{spectrograph}")
 
-    # High-performance strategy: Sample sparsely, then interpolate
-    # Different sampling rates for X (spatial/fiber) and Y (spectral/wavelength) directions
-    # X direction: fiber width ~5 pixels, so sample every 2 pixels for accuracy
-    # Y direction: wavelength varies smoothly, so sample every 16 pixels
-    sampling_step_x = 2  # Dense sampling across fibers (spatial direction)
-    sampling_step_y = 16  # Sparse sampling along wavelength (spectral direction)
+    # Get ALL fiber data at once (fully vectorized!)
+    # Shape: (nFibers,) - actual fiber ID for each fiber index
+    fiber_ids_array = det_map.getFiberId()
+    # Shape: (nFibers, nY) - X-center for each fiber at each Y coordinate
+    x_centers_all = det_map.getXCenter()
+    # Shape: (nFibers, nY) - wavelength for each fiber at each Y coordinate
+    wavelengths_all = det_map.getWavelength()
 
-    # Create coordinate grids for sampled points
-    y_sample = np.arange(0, height, sampling_step_y)
-    x_sample = np.arange(0, width, sampling_step_x)
-    y_grid_sample, x_grid_sample = np.meshgrid(y_sample, x_sample, indexing="ij")
-
-    # Flatten sampled coordinates
-    x_flat_sample = x_grid_sample.flatten()
-    y_flat_sample = y_grid_sample.flatten()
-
+    nFibers, nY = x_centers_all.shape
     logger.debug(
-        f"Arm {arm}, SM{spectrograph}: Sampling {len(x_flat_sample)} points "
-        f"(step_x={sampling_step_x}, step_y={sampling_step_y}, "
-        f"{len(x_flat_sample)}/{height*width} = "
-        f"{100*len(x_flat_sample)/(height*width):.2f}%)"
+        f"Arm {arm}, SM{spectrograph}: Processing {nFibers} fibers × {nY} Y-pixels "
+        f"= {nFibers * nY:,} data points (vectorized)"
     )
 
-    # Find fiber IDs for sampled pixels only
-    fiber_id_flat_sample = np.array(
-        [
-            det_map.findFiberId(float(x), float(y))
-            for x, y in zip(x_flat_sample, y_flat_sample)
-        ]
-    )
-    fiber_id_map_sample = fiber_id_flat_sample.reshape(len(y_sample), len(x_sample))
-
-    # Interpolate fiber IDs to full resolution using nearest-neighbor
-    # (fiber IDs are discrete, so nearest is appropriate)
-    from scipy.ndimage import zoom
-
-    zoom_factor = (height / len(y_sample), width / len(x_sample))
-    fiber_id_map = zoom(fiber_id_map_sample, zoom_factor, order=0).astype(np.int32)
-
-    # Find wavelengths for pixels with valid fiber IDs
-    # Process fiber-by-fiber to avoid memory issues with findWavelength
-    wavelength_map = np.full((height, width), np.nan, dtype=np.float64)
-
-    # Get unique fiber IDs (excluding -1 for invalid pixels)
-    valid_fiber_ids = np.unique(fiber_id_map[fiber_id_map >= 0])
-
-    if len(valid_fiber_ids) > 0:
-        logger.debug(
-            f"Arm {arm}, SM{spectrograph}: Processing wavelengths for {len(valid_fiber_ids)} fibers"
+    # Validate dimensions - raise error if mismatch
+    if nY != height:
+        raise ValueError(
+            f"DetectorMap Y-dimension mismatch for arm {arm}, SM{spectrograph}: "
+            f"detectorMap has {nY} rows but image has {height} rows"
         )
 
-        # Process each fiber separately
-        for fid in valid_fiber_ids:
-            # Find all pixels belonging to this fiber
-            fiber_mask = fiber_id_map == fid
+    if len(fiber_ids_array) != nFibers:
+        raise ValueError(
+            f"Fiber ID array size mismatch for arm {arm}, SM{spectrograph}: "
+            f"getFiberId() returned {len(fiber_ids_array)} IDs but expected {nFibers}"
+        )
 
-            # Get row indices for this fiber (flatten and ensure proper dtype)
-            # Use sampled y-coordinates to reduce wavelength calculations
-            y_coords_fiber = np.where(fiber_mask)[0]  # Get unique y values
-            unique_y = np.unique(y_coords_fiber)
+    # Initialize output arrays using compact dtypes
+    INVALID_FIBER_ID = np.uint16(0)
+    fiber_id_map = np.full((height, width), INVALID_FIBER_ID, dtype=np.uint16)
+    wavelength_map = np.full((height, width), np.nan, dtype=np.float32)
 
-            # Calculate wavelengths for unique y values only
-            wavelengths_for_rows = det_map.findWavelength(
-                int(fid), unique_y.astype(np.float64)
-            )
+    # Create X pixel coordinates array (reused for every row)
+    x_pixels = np.arange(width, dtype=np.float64)
 
-            # Create a mapping from y-coordinate to wavelength
-            y_to_wavelength = dict(zip(unique_y, wavelengths_for_rows))
+    # Process each detector row independently to keep memory bounded
+    log_every = max(1, height // 10)
+    for y in range(height):
+        if y % log_every == 0:
+            logger.debug(f"Arm {arm}, SM{spectrograph}: Processing row {y+1}/{height}")
 
-            # Assign wavelengths to all pixels in this fiber
-            for y in unique_y:
-                row_mask = fiber_mask[y, :]
-                wavelength_map[y, row_mask] = y_to_wavelength[y]
+        x_centers_row = x_centers_all[:, y]
+        wavelengths_row = wavelengths_all[:, y]
+        valid = np.isfinite(x_centers_row) & np.isfinite(wavelengths_row)
+
+        if not np.any(valid):
+            continue  # Nothing to assign for this row
+
+        x_valid = x_centers_row[valid]
+        fiber_ids_valid = fiber_ids_array[valid]
+        wavelengths_valid = wavelengths_row[valid]
+
+        order = np.argsort(x_valid)
+        x_sorted = x_valid[order]
+        fiber_sorted = fiber_ids_valid[order]
+        wavelengths_sorted = wavelengths_valid[order]
+
+        # Build Voronoi boundaries between neighboring fibers
+        boundaries = np.empty(len(x_sorted) + 1, dtype=np.float64)
+        boundaries[1:-1] = 0.5 * (x_sorted[:-1] + x_sorted[1:])
+        boundaries[0] = -np.inf
+        boundaries[-1] = np.inf
+
+        assignment_idx = np.searchsorted(boundaries, x_pixels, side="right") - 1
+        assignment_idx = np.clip(assignment_idx, 0, len(x_sorted) - 1)
+
+        fiber_id_map[y, :] = fiber_sorted[assignment_idx].astype(np.uint16, copy=False)
+        wavelength_map[y, :] = wavelengths_sorted[assignment_idx].astype(
+            np.float32, copy=False
+        )
+
+    # Count valid pixels
+    valid_pixels = np.count_nonzero(fiber_id_map)
+    total_pixels = height * width
+
+    if valid_pixels == 0:
+        logger.warning(
+            f"Arm {arm}, SM{spectrograph}: DetectorMap overlay has no valid pixels"
+        )
+        return None, None
+
+    fiber_ids_valid = fiber_id_map[fiber_id_map > 0]
+    wavelength_valid = wavelength_map[np.isfinite(wavelength_map)]
+
+    if wavelength_valid.size == 0:
+        wavelength_summary = "no valid wavelengths"
+    else:
+        wavelength_summary = (
+            f"Wavelength range: [{np.nanmin(wavelength_valid):.2f}, "
+            f"{np.nanmax(wavelength_valid):.2f}] nm"
+        )
 
     logger.info(
         f"Arm {arm}, SM{spectrograph}: Created detectorMap overlay - "
-        f"Valid fibers: {np.sum(fiber_id_map >= 0)}/{height*width} pixels, "
-        f"Fiber ID range: [{np.min(fiber_id_map[fiber_id_map >= 0])}, {np.max(fiber_id_map[fiber_id_map >= 0])}], "
-        f"Wavelength range: [{np.nanmin(wavelength_map):.2f}, {np.nanmax(wavelength_map):.2f}] nm"
+        f"Valid pixels: {valid_pixels}/{total_pixels} "
+        f"({100*valid_pixels/total_pixels:.1f}%), "
+        f"Fiber ID range: [{int(np.min(fiber_ids_valid))}, {int(np.max(fiber_ids_valid))}], "
+        f"{wavelength_summary}"
     )
 
     return fiber_id_map, wavelength_map
@@ -733,12 +761,12 @@ def _build_single_2d_array(
             del _flux
         exp.image -= image
 
-        # Get numpy array
-        image_array = exp.image.array.astype(np.float64)
+        # Get numpy array with compact dtype
+        image_array = exp.image.array.astype(np.float32)
 
-        # Apply astropy transform
+        # Apply astropy transform and keep float32
         transform = get_transform(scale_algo)
-        transformed_array = transform(image_array)
+        transformed_array = transform(image_array).astype(np.float32)
 
         logger.info(
             f"Arm {arm}, SM{spectrograph}: Transformed array range: [{transformed_array.min()}, {transformed_array.max()}]"
@@ -909,10 +937,10 @@ def create_holoviews_from_arrays(array_results, spectrograph):
                     # Stack arrays for multiple vdims: [scaled for display, raw for hover, fiber ID, wavelength]
                     combined_data = np.stack(
                         [
-                            flipped_array,
-                            flipped_raw,
-                            flipped_fiber_id,
-                            flipped_wavelength,
+                            flipped_array.astype(np.float32, copy=False),
+                            flipped_raw.astype(np.float32, copy=False),
+                            flipped_fiber_id.astype(np.float32, copy=False),
+                            flipped_wavelength.astype(np.float32, copy=False),
                         ],
                         axis=-1,
                     )
@@ -924,7 +952,13 @@ def create_holoviews_from_arrays(array_results, spectrograph):
                     ]
                 else:
                     # Stack arrays for basic vdims only: [scaled for display, raw for hover]
-                    combined_data = np.stack([flipped_array, flipped_raw], axis=-1)
+                    combined_data = np.stack(
+                        [
+                            flipped_array.astype(np.float32, copy=False),
+                            flipped_raw.astype(np.float32, copy=False),
+                        ],
+                        axis=-1,
+                    )
                     vdims_list = ["intensity", "raw_value"]
 
                 # Set bounds: (left, bottom, right, top)
