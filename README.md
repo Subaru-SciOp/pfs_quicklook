@@ -4,7 +4,7 @@ Web application for quick-look visualization of Prime Focus Spectrograph (PFS) d
 
 This app replaces the previous Jupyter notebook-based quicklook tool ([check_quick_reduction_data.ipynb](legacy/check_quick_reduction_data.ipynb)) with a production-ready web interface.
 
-[![1D Gallery View](../img/screenshot_pfsmerged.png)](../img/screenshot_pfsmerged.png)
+[![1D Gallery View](docs/img/screenshot_pfsmerged.png)](docs/img/screenshot_pfsmerged.png)
 
 ## Key Features
 
