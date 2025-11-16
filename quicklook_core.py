@@ -1404,7 +1404,7 @@ def build_1d_bokeh_figure_single_visit(
 
             # pfsConfigから該当fiberの情報を取得
             pfs_sel = pfsConfig.select(fiberId=fid)
-            obj_id = pfs_sel.objId[0]
+            obj_id = str(pfs_sel.objId[0])  # Convert to string to avoid JavaScript integer overflow
             ob_code = pfs_sel.obCode[0]
 
             color = colors[i % len(colors)]
