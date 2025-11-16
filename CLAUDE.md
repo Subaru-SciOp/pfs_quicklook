@@ -30,7 +30,7 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
   - Uses public API (custom attribute on `session_context`) for stability across Panel versions
   - Prevents interference between multiple simultaneous users
   - Compatible with `--num-threads` for concurrent request handling
-  - See [SESSION_STATE_MIGRATION.md](SESSION_STATE_MIGRATION.md) for implementation details
+  - See [Session State Management](#session-state-management) section below for implementation details
 
 #### User Interface (app.py)
 
@@ -54,7 +54,7 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
 
    - Visit selection: MultiChoice widget with search functionality (no limit on displayed options)
    - Visit list order: Newest visits first (descending order) for easier access to recent observations
-   - **Load Data** button: Loads visit data and populates OB Code options
+   - **Load Visit** button: Loads visit data and populates OB Code options
    - Status display: Shows current state (Ready/Loading/Loaded with fiber & OB code counts)
 
 4. **Fiber Selection**
@@ -65,14 +65,14 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
 
 5. **Plot Controls**
 
-   - **Plot 2D** button: Creates 2D spectral image (enabled after data load)
-   - **Plot 1D** button: Creates 1D spectra plot (enabled after data load, requires fiber selection)
-   - **Plot 1D Image** button: Creates 2D representation of all 1D spectra
+   - **Show 2D Images** button: Creates 2D spectral image (enabled after data load)
+   - **Show 1D Spectra** button: Creates 1D spectra plot (enabled after data load, requires fiber selection)
+   - **Show 1D Spectra Image** button: Creates 2D representation of all 1D spectra
    - **Reset** button: Clears all data and selections
 
 6. **Options** (Currently commented out)
    - Sky subtraction (checkbox, default: True)
-   - DetectorMap overlay (checkbox, default: False)
+   - DetectorMap overlay (switch, default: True)
    - Scale selection (zscale/minmax, default: zscale)
    - Widgets exist but are hidden from UI
 
@@ -112,14 +112,14 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
 
 **Three-Step Process**:
 
-1. **Load Data** (`load_data_callback`):
+1. **Load Visit** (`load_data_callback`):
 
    - Validates visit selection
    - Clears existing plots from all tabs (2D Images, 1D Image, 1D Spectra)
    - Calls `load_visit_data()` to retrieve pfsConfig
    - Creates bidirectional OB Code ↔ Fiber ID mappings
    - Populates OB Code options
-   - Enables Plot 2D/1D buttons
+   - Enables Show 2D Images / Show 1D Spectra / Show 1D Spectra Image buttons
    - Updates status: "Loaded visit XXXXX: N fibers, M OB codes"
 
 2. **Select Fibers** (Optional):
@@ -130,17 +130,17 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
    - Bidirectional sync maintains consistency
 
 3. **Create Plots**:
-   - **Plot 2D** (`plot_2d_callback`):
+   - **Show 2D Images** (`plot_2d_callback`):
      - No fiber selection required (displays full detector image)
      - Retrieves: pfsConfig, calexp, detectorMap, pfsArm, sky1d, fiberProfiles
      - Applies sky subtraction (if enabled)
      - Displays in 2D tab (auto-switches)
-   - **Plot 1D** (`plot_1d_callback`):
+   - **Show 1D Spectra** (`plot_1d_callback`):
      - Requires fiber selection
      - Retrieves: pfsConfig, pfsMerged
      - Creates interactive Bokeh plot
      - Displays in 1D tab (auto-switches)
-   - **Plot 1D Image** (`plot_1d_image_callback`):
+   - **Show 1D Spectra Image** (`plot_1d_image_callback`):
      - Creates 2D image where each row is a fiber's 1D spectrum
      - Uses HoloViews for interactive visualization
      - Displays in 1D Image tab (auto-switches)
@@ -248,14 +248,28 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
 pfs_quicklook/
 ├── app.py                          # Main Panel web application (1,312 lines)
 ├── quicklook_core.py               # Core spectral processing functions (1,486 lines)
-├── check_quick_reduction_data.py   # Original Jupyter notebook converted to .py (471 lines)
-├── check_quick_reduction_data.ipynb # Original Jupyter notebook
 ├── launch_app.bash                 # Environment setup and launch script
 ├── requirements.txt                # Python dependencies (Panel, etc.)
 ├── pyproject.toml                  # Project metadata
-├── README.md                       # Project documentation
-├── CLAUDE.md                       # This file - development documentation
-├── SESSION_STATE_MIGRATION.md      # Session state implementation details
+├── README.md                       # Concise project overview with documentation links
+├── CLAUDE.md                       # This file - comprehensive technical documentation
+├── legacy/                         # Legacy Jupyter notebook (pre-web app)
+│   ├── check_quick_reduction_data.ipynb  # Original notebook
+│   └── check_quick_reduction_data.py     # Notebook as Python script (471 lines)
+├── docs/                           # User and administrator documentation
+│   ├── README.md                   # Documentation navigation hub
+│   ├── setup.md                    # Administrator setup guide
+│   ├── troubleshooting.md          # Common issues and solutions
+│   ├── user-guide/                 # User guide for observers
+│   │   ├── index.md                # User guide overview
+│   │   ├── loading-data.md         # Loading visit data
+│   │   ├── 2d-images.md            # Working with 2D images
+│   │   └── 1d-spectra.md           # Working with 1D spectra
+│   └── img/                        # Screenshots
+│       ├── screenshot_loadvisit.png
+│       ├── screenshot_2dimage.png
+│       ├── screenshot_pfsmerged.png
+│       └── screenshot_1dspec.png
 ├── .env                            # Environment configuration (datastore, collection, hostname)
 └── .gitignore                      # Git ignore rules
 ```
@@ -544,7 +558,7 @@ All functions use **NumPy-style docstrings** with comprehensive documentation:
 **Comparison with Original Jupyter Notebook** (Updated: 2025-11-13):
 
 ```text
-Original notebook (check_quick_reduction_data.py):
+Original notebook (legacy/check_quick_reduction_data.py):
   - Total: 471 lines
   - Real code: 292 lines
   - Comments: 101 lines
@@ -980,10 +994,11 @@ The PFS Butler uses a custom dimension structure that differs from standard LSST
    - Custom color schemes/themes
    - Fiber map visualization (focal plane view)
 
-3. **Documentation**
-   - User manual with screenshots
-   - Deployment guide for different environments
-   - Troubleshooting guide with common issues
+3. **Documentation** (Completed 2025-01-15)
+   - ✅ User manual with screenshots - See [docs/user-guide/](docs/user-guide/)
+   - ✅ Setup guide for administrators - See [docs/setup.md](docs/setup.md)
+   - ✅ Troubleshooting guide with common issues - See [docs/troubleshooting.md](docs/troubleshooting.md)
+   - Documentation organized by audience (observers, administrators, developers)
 
 ## Technical Notes
 
@@ -1135,7 +1150,7 @@ Application uses loguru for logging. Check console output for detailed informati
 
 ## Original Source Reference
 
-The web app is based on [check_quick_reduction_data.ipynb](check_quick_reduction_data.ipynb) which contains:
+The web app is based on [check_quick_reduction_data.ipynb](legacy/check_quick_reduction_data.ipynb) which contains:
 
 - Single-visit 2D/1D visualization (cells around lines 84-235)
 - Multi-visit stacking (cells around lines 288-470)
@@ -1146,7 +1161,7 @@ Key differences from notebook:
 
 - Panel web UI instead of Jupyter widgets
 - Bokeh/HoloViews for plots (instead of matplotlib) for better web interactivity
-- Separated workflow: Load Data → Select Fibers → Create Plots
+- Separated workflow: Load Visit → Select Fibers → Create Plots
 - OB Code filtering and bidirectional OB Code ↔ Fiber ID linking
 - Session-based state management for multi-user support
 - Parallel processing for multiple spectrographs/arms
