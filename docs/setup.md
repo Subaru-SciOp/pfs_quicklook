@@ -135,17 +135,17 @@ LSST_PYTHON_USERLIB="/work/<your_username>/lsst-stack-local-pythonlibs"
 
 ### 6. Launch the Application
 
-It's recommended to run the application inside a `screen` or `tmux` session so it continues running after you disconnect:
+It's recommended to run the application inside a `tmux` session so it continues running after you disconnect:
 
 ```bash
-# Start a screen session (optional but recommended)
-screen -S pfs_quicklook
+# Start a tmux session (optional but recommended)
+tmux new -s pfs_quicklook
 
 # Launch the application
 bash ./launch_app.bash
 
-# Detach from screen: Ctrl+A, then D
-# Reattach later: screen -r pfs_quicklook
+# Detach from tmux: Ctrl+B, then D
+# Reattach later: tmux attach -t pfs_quicklook
 ```
 
 The launch script automatically:
