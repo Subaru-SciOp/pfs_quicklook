@@ -1,5 +1,11 @@
 # PFS QuickLook Web Application
 
+## License
+
+This software is licensed under the MIT License. See [LICENSE](LICENSE) for full license text.
+
+Copyright (c) 2025 Masato Onodera, Subaru/PFS obsproc team
+
 ## Project Overview
 
 This is a web application for visualizing 2D and 1D spectral data from the PFS (Prime Focus Spectrograph) pipeline. The application is built using Panel and provides an interactive interface for observatory personnel to quickly inspect spectral data during observations.
