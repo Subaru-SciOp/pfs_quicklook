@@ -4,7 +4,7 @@ Welcome to the PFS QuickLook documentation! This directory contains comprehensiv
 
 ## Documentation Index
 
-### For Observatory Observers
+### For Observers
 
 If you're using PFS QuickLook to inspect spectral data during observations:
 
@@ -13,7 +13,7 @@ If you're using PFS QuickLook to inspect spectral data during observations:
   - [2D Spectral Images](user-guide/2d-images.md) - Working with 2D visualizations
   - [1D Spectra](user-guide/1d-spectra.md) - Viewing and analyzing 1D spectra
 
-### For System Administrators
+### For Administrators (e.g., Support Astronomers)
 
 If you're installing, configuring, or maintaining PFS QuickLook:
 
@@ -24,7 +24,7 @@ If you're installing, configuring, or maintaining PFS QuickLook:
   - Deployment modes (development vs production)
   - Post-installation verification
 
-### For All Users
+### For Troubleshooting
 
 - **[Troubleshooting Guide](troubleshooting.md)** - Common issues and solutions
   - Launch issues
@@ -47,11 +47,13 @@ If you're installing, configuring, or maintaining PFS QuickLook:
 ### Getting Started
 
 **First-time users**:
+
 1. Read [User Guide Overview](user-guide/index.md) for workflow introduction
 2. Follow [Loading Visit Data](user-guide/loading-data.md) to get started
 3. Keep [Troubleshooting](troubleshooting.md) handy for quick reference
 
 **Administrators**:
+
 1. Follow [Setup Guide](setup.md) for installation
 2. Configure `.env` file with correct datastore and collection
 3. Launch application and verify operation

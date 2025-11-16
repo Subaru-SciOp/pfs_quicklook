@@ -248,13 +248,14 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
 pfs_quicklook/
 ├── app.py                          # Main Panel web application (1,312 lines)
 ├── quicklook_core.py               # Core spectral processing functions (1,486 lines)
-├── check_quick_reduction_data.py   # Original Jupyter notebook converted to .py (471 lines)
-├── check_quick_reduction_data.ipynb # Original Jupyter notebook
 ├── launch_app.bash                 # Environment setup and launch script
 ├── requirements.txt                # Python dependencies (Panel, etc.)
 ├── pyproject.toml                  # Project metadata
 ├── README.md                       # Concise project overview with documentation links
 ├── CLAUDE.md                       # This file - comprehensive technical documentation
+├── legacy/                         # Legacy Jupyter notebook (pre-web app)
+│   ├── check_quick_reduction_data.ipynb  # Original notebook
+│   └── check_quick_reduction_data.py     # Notebook as Python script (471 lines)
 ├── docs/                           # User and administrator documentation
 │   ├── README.md                   # Documentation navigation hub
 │   ├── setup.md                    # Administrator setup guide
@@ -557,7 +558,7 @@ All functions use **NumPy-style docstrings** with comprehensive documentation:
 **Comparison with Original Jupyter Notebook** (Updated: 2025-11-13):
 
 ```text
-Original notebook (check_quick_reduction_data.py):
+Original notebook (legacy/check_quick_reduction_data.py):
   - Total: 471 lines
   - Real code: 292 lines
   - Comments: 101 lines
@@ -1149,7 +1150,7 @@ Application uses loguru for logging. Check console output for detailed informati
 
 ## Original Source Reference
 
-The web app is based on [check_quick_reduction_data.ipynb](check_quick_reduction_data.ipynb) which contains:
+The web app is based on [check_quick_reduction_data.ipynb](legacy/check_quick_reduction_data.ipynb) which contains:
 
 - Single-visit 2D/1D visualization (cells around lines 84-235)
 - Multi-visit stacking (cells around lines 288-470)
