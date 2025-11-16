@@ -229,6 +229,32 @@ btn_plot_1d = pn.widgets.Button(
 )
 btn_reset = pn.widgets.Button(name="Reset", sizing_mode="stretch_width")
 
+# Help/Documentation buttons
+btn_github = pn.widgets.Button(
+    name="GitHub Repository",
+    button_type="primary",
+    icon="brand-github",
+    sizing_mode="stretch_width",
+)
+btn_user_guide = pn.widgets.Button(
+    name="User Guide on GitHub",
+    button_type="primary",
+    icon="book-2",
+    sizing_mode="stretch_width",
+)
+
+# JavaScript callbacks to open links in new tabs
+btn_github.js_on_click(
+    code="""
+window.open('https://github.com/Subaru-SciOp/pfs_quicklook', '_blank');
+"""
+)
+btn_user_guide.js_on_click(
+    code="""
+window.open('https://github.com/Subaru-SciOp/pfs_quicklook/blob/main/docs/user-guide/index.md', '_blank');
+"""
+)
+
 status_text = pn.pane.Markdown("**Ready**", sizing_mode="stretch_width", height=60)
 
 # Configuration info text (will be populated when session starts)
@@ -1383,6 +1409,9 @@ sidebar = pn.Column(
     pn.layout.Divider(),
     status_text,
     config_info_text,
+    pn.layout.Divider(),
+    btn_user_guide,
+    btn_github,
     min_width=280,
     max_width=400,
     sizing_mode="stretch_width",
