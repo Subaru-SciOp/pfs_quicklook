@@ -95,7 +95,9 @@ This is a QuickLook tool for PFS observatory operations.
 
 ## License
 
-This software is developed for the Prime Focus Spectrograph (PFS) project.
+This software is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+
+Copyright (c) 2025 Masato Onodera, Subaru/PFS obsproc team
 
 ## Acknowledgments
 
