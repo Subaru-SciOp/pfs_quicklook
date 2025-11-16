@@ -4,6 +4,8 @@ Web application for quick-look visualization of Prime Focus Spectrograph (PFS) d
 
 This app replaces the previous Jupyter notebook-based quicklook tool ([check_quick_reduction_data.ipynb](legacy/check_quick_reduction_data.ipynb)) with a production-ready web interface.
 
+[![1D Gallery View](../img/screenshot_pfsmerged.png)](../img/screenshot_pfsmerged.png)
+
 ## Key Features
 
 - **Fiber configuration viewer** with interactive table showing pointing and fiber details
@@ -86,6 +88,7 @@ Technical details and architecture:
 This is a QuickLook tool for PFS observatory operations.
 
 **For issues or feature requests**:
+
 - **PFS Observation Helpdesk**: <pfs-obs-help@naoj.org>
 - **GitHub Issues**: <https://github.com/Subaru-SciOp/pfs_quicklook/issues>
 - Review documentation: [User Guide](docs/user-guide/index.md) | [Troubleshooting](docs/troubleshooting.md)
