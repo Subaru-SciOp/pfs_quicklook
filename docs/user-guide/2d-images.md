@@ -16,7 +16,7 @@ Before creating 2D images, you must:
 
 ### Step-by-Step Instructions
 
-1. **Click "Plot 2D" Button**:
+1. **Click "Show 2D Images" Button**:
    - Button is enabled after loading visit data
    - Application begins processing images
    - Progress indicated in status display
@@ -141,7 +141,7 @@ Compare the same positions across different spectrographs:
 
 For routine quality checks:
 1. Load visit data
-2. Click "Plot 2D"
+2. Click "Show 2D Images"
 3. Quickly scan all spectrograph tabs
 4. Look for obvious issues or anomalies
 5. If everything looks good, proceed to 1D spectra
@@ -150,7 +150,7 @@ For routine quality checks:
 
 For thorough quality assessment:
 1. Load visit data
-2. Click "Plot 2D"
+2. Click "Show 2D Images"
 3. Use zoom to focus on regions of interest
 4. Use hover to examine pixel values and coordinates
 5. Compare features across arms and spectrographs
@@ -169,7 +169,7 @@ For comparing multiple visits:
 
 ### Data Processing Pipeline
 
-When you click "Plot 2D", the application:
+When you click "Show 2D Images", the application:
 
 1. **Retrieves data products** from Butler datastore:
    - `pfsConfig` - Fiber configuration

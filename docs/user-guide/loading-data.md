@@ -51,11 +51,11 @@ In the **Data Selection** section, choose a visit from the dropdown menu:
 
 Once you've selected a visit:
 
-1. Click the **"Load Data"** button
+1. Click the **"Load Visit"** button
 2. The application will:
    - Retrieve the pfsConfig (fiber configuration) from the Butler datastore
    - Populate the OB Code dropdown with available observation codes
-   - Enable the Plot 2D, Plot 1D, and Plot 1D Image buttons
+   - Enable the Show 2D Images, Show 1D Spectra, and Show 1D Spectra Image buttons
 3. Watch the status display for confirmation
 
 ### 4. Verify Loading Success
@@ -73,11 +73,11 @@ After loading completes, you should see:
 
 ✅ **Plot buttons**: Now enabled and ready to use
 
-✅ **pfsConfig tab**: Automatically switched to show fiber configuration table
+✅ **Target Info tab**: Automatically switched to show fiber configuration table
 
-## Understanding the pfsConfig Tab
+## Understanding the Target Info Tab
 
-After loading data, the application automatically switches to the **pfsConfig** tab, which displays:
+After loading data, the application automatically switches to the **Target Info** tab, which displays:
 
 ### Visit Header Information
 
@@ -124,7 +124,7 @@ An interactive table showing details for each fiber:
 The screenshot shows:
 - Spectrograph selection checkbox group
 - Visit selection dropdown (with search capability)
-- Load Data button
+- Load Visit button
 - Status display showing loaded visit information
 - OB Code and Fiber ID dropdowns (populated after loading)
 
@@ -175,7 +175,7 @@ You must manually select a visit from the dropdown. There is no automatic loadin
 3. Contact administrator to verify configuration
 4. Check with data reduction team that data exists for the desired date
 
-### "Load Data" Button Doesn't Work
+### "Load Visit" Button Doesn't Work
 
 **Symptom**: Button click has no effect
 
@@ -212,7 +212,7 @@ You must manually select a visit from the dropdown. There is no automatic loadin
 
 After successfully loading visit data, you can:
 
-1. **View fiber configuration**: Already displayed in pfsConfig tab
+1. **View fiber configuration**: Already displayed in Target Info tab
 2. **Create 2D images**: See [2D Images Guide](2d-images.md)
 3. **View 1D spectra**: See [1D Spectra Guide](1d-spectra.md)
 4. **Select specific fibers**: Use OB Code or Fiber ID dropdowns for filtering

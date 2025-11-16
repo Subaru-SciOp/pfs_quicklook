@@ -19,7 +19,7 @@ Before viewing 1D spectra, you must:
 
 ## Two Views of 1D Spectra
 
-### Gallery View (Plot 1D Image)
+### Gallery View (Show 1D Spectra Image)
 
 Shows all fiber spectra in a single 2D image representation:
 - Each horizontal row = one fiber's spectrum
@@ -27,7 +27,7 @@ Shows all fiber spectra in a single 2D image representation:
 - Color intensity represents flux level
 - Quick overview of all fibers simultaneously
 
-### Individual View (Plot 1D)
+### Individual View (Show 1D Spectra)
 
 Shows selected fiber spectra as interactive line plots:
 - Each fiber plotted with different color
@@ -41,7 +41,7 @@ Shows selected fiber spectra as interactive line plots:
 
 ### Creating the Gallery View
 
-1. Click the **"Plot 1D Image"** button in the Plot Controls section
+1. Click the **"Show 1D Spectra Image"** button in the Plot Controls section
 2. Wait for processing (~5-10 seconds)
 3. Application automatically switches to the **1D Image** tab
 4. Gallery view appears showing all fibers
@@ -124,7 +124,7 @@ The screenshot shows:
 
 ---
 
-## Individual View: Plot 1D
+## Individual View: Show 1D Spectra
 
 ### Selecting Fibers
 
@@ -174,7 +174,7 @@ The OB Code and Fiber ID selections are **automatically linked**:
 ### Creating Individual 1D Plots
 
 1. **Select fibers** using OB Code or Fiber ID (see above)
-2. Click **"Plot 1D"** button
+2. Click **"Show 1D Spectra"** button
 3. Wait for processing (~2-5 seconds)
 4. Application automatically switches to the **1D Spectra** tab
 5. Interactive plot appears with selected fibers
@@ -297,7 +297,7 @@ When plotting many fibers:
 
 1. Load visit data
 2. Select OB Code: `obj_science`
-3. Click "Plot 1D"
+3. Click "Show 1D Spectra"
 4. Toggle through fibers using legend
 5. Look for obvious issues (low flux, high noise, gaps)
 
@@ -306,9 +306,9 @@ When plotting many fibers:
 **Goal**: Compare sky and science fibers
 
 1. Load visit data
-2. Plot 1D Image for overview
+2. Show 1D Spectra Image for overview
 3. Select OB Codes: `obj_sky` and `obj_science`
-4. Click "Plot 1D"
+4. Click "Show 1D Spectra"
 5. Toggle fibers to compare:
    - Sky fibers should show primarily sky lines
    - Science fibers should have sky lines subtracted
@@ -320,7 +320,7 @@ When plotting many fibers:
 
 1. Load visit data
 2. Select OB Code: `obj_fluxstd`
-3. Click "Plot 1D"
+3. Click "Show 1D Spectra"
 4. Examine:
    - Smooth continuum shape
    - Expected spectral features
@@ -386,12 +386,12 @@ The y-axis range is automatically calculated using:
 
 ## Troubleshooting
 
-### "Plot 1D" Button Disabled
+### "Show 1D Spectra" Button Disabled
 
-**Symptom**: Cannot click "Plot 1D" button
+**Symptom**: Cannot click "Show 1D Spectra" button
 
 **Solutions**:
-1. Ensure visit data is loaded first (click "Load Data")
+1. Ensure visit data is loaded first (click "Load Visit")
 2. Check status display shows "Loaded visit XXXXX"
 3. Select at least one fiber (OB Code or Fiber ID)
 

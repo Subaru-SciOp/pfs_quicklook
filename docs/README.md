@@ -87,7 +87,7 @@ All screenshots referenced in the documentation are located in [`img/`](img/) di
 
 - **Repository**: <https://github.com/Subaru-SciOp/pfs_quicklook>
 - **Technical Docs**: [CLAUDE.md](../CLAUDE.md)
-- **Original Notebook**: [check_quick_reduction_data.ipynb](../check_quick_reduction_data.ipynb)
+- **Original Notebook**: [check_quick_reduction_data.ipynb](../legacy/check_quick_reduction_data.ipynb)
 
 ## Documentation Maintenance
 
@@ -96,5 +96,3 @@ This documentation is maintained alongside the PFS QuickLook application code. I
 - Create an issue on GitHub: <https://github.com/Subaru-SciOp/pfs_quicklook/issues>
 - Contact the development team
 - Submit a pull request with corrections
-
-**Last updated**: 2025-01-15

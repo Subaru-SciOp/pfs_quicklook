@@ -54,7 +54,7 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
 
    - Visit selection: MultiChoice widget with search functionality (no limit on displayed options)
    - Visit list order: Newest visits first (descending order) for easier access to recent observations
-   - **Load Data** button: Loads visit data and populates OB Code options
+   - **Load Visit** button: Loads visit data and populates OB Code options
    - Status display: Shows current state (Ready/Loading/Loaded with fiber & OB code counts)
 
 4. **Fiber Selection**
@@ -65,14 +65,14 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
 
 5. **Plot Controls**
 
-   - **Plot 2D** button: Creates 2D spectral image (enabled after data load)
-   - **Plot 1D** button: Creates 1D spectra plot (enabled after data load, requires fiber selection)
-   - **Plot 1D Image** button: Creates 2D representation of all 1D spectra
+   - **Show 2D Images** button: Creates 2D spectral image (enabled after data load)
+   - **Show 1D Spectra** button: Creates 1D spectra plot (enabled after data load, requires fiber selection)
+   - **Show 1D Spectra Image** button: Creates 2D representation of all 1D spectra
    - **Reset** button: Clears all data and selections
 
 6. **Options** (Currently commented out)
    - Sky subtraction (checkbox, default: True)
-   - DetectorMap overlay (checkbox, default: False)
+   - DetectorMap overlay (switch, default: True)
    - Scale selection (zscale/minmax, default: zscale)
    - Widgets exist but are hidden from UI
 
@@ -112,14 +112,14 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
 
 **Three-Step Process**:
 
-1. **Load Data** (`load_data_callback`):
+1. **Load Visit** (`load_data_callback`):
 
    - Validates visit selection
    - Clears existing plots from all tabs (2D Images, 1D Image, 1D Spectra)
    - Calls `load_visit_data()` to retrieve pfsConfig
    - Creates bidirectional OB Code ↔ Fiber ID mappings
    - Populates OB Code options
-   - Enables Plot 2D/1D buttons
+   - Enables Show 2D Images / Show 1D Spectra / Show 1D Spectra Image buttons
    - Updates status: "Loaded visit XXXXX: N fibers, M OB codes"
 
 2. **Select Fibers** (Optional):
@@ -130,17 +130,17 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
    - Bidirectional sync maintains consistency
 
 3. **Create Plots**:
-   - **Plot 2D** (`plot_2d_callback`):
+   - **Show 2D Images** (`plot_2d_callback`):
      - No fiber selection required (displays full detector image)
      - Retrieves: pfsConfig, calexp, detectorMap, pfsArm, sky1d, fiberProfiles
      - Applies sky subtraction (if enabled)
      - Displays in 2D tab (auto-switches)
-   - **Plot 1D** (`plot_1d_callback`):
+   - **Show 1D Spectra** (`plot_1d_callback`):
      - Requires fiber selection
      - Retrieves: pfsConfig, pfsMerged
      - Creates interactive Bokeh plot
      - Displays in 1D tab (auto-switches)
-   - **Plot 1D Image** (`plot_1d_image_callback`):
+   - **Show 1D Spectra Image** (`plot_1d_image_callback`):
      - Creates 2D image where each row is a fiber's 1D spectrum
      - Uses HoloViews for interactive visualization
      - Displays in 1D Image tab (auto-switches)
@@ -1161,7 +1161,7 @@ Key differences from notebook:
 
 - Panel web UI instead of Jupyter widgets
 - Bokeh/HoloViews for plots (instead of matplotlib) for better web interactivity
-- Separated workflow: Load Data → Select Fibers → Create Plots
+- Separated workflow: Load Visit → Select Fibers → Create Plots
 - OB Code filtering and bidirectional OB Code ↔ Fiber ID linking
 - Session-based state management for multi-user support
 - Parallel processing for multiple spectrographs/arms

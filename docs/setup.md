@@ -148,6 +148,8 @@ bash ./launch_app.bash
 # Reattach later: tmux attach -t pfs_quicklook
 ```
 
+**Tip**: For more tmux commands and shortcuts, see the [tmux cheatsheet](https://tmuxcheatsheet.com/).
+
 The launch script automatically:
 1. Validates hostname matches `PFS_APP_HOSTNAME`
 2. Loads LSST environment

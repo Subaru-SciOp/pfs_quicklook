@@ -163,7 +163,7 @@ This guide provides solutions to common issues you may encounter while using PFS
 
 ---
 
-### "Load Data" Button Doesn't Respond
+### "Load Visit" Button Doesn't Respond
 
 **Symptom**: Clicking button has no effect
 
@@ -270,7 +270,7 @@ This guide provides solutions to common issues you may encounter while using PFS
 
 2. **Verify data loaded**:
    - Check status display shows "Loaded visit XXXXX"
-   - Ensure you clicked "Load Data" before "Plot 2D"
+   - Ensure you clicked "Load Visit" before "Show 2D Images"
 
 3. **Check for missing data products**:
    - Some visits may have incomplete data
