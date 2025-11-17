@@ -491,6 +491,56 @@ def load_visit_data(datastore: str, base_collection: str, visit: int):
     return pfsConfig, obcode_to_fibers, fiber_to_obcode
 
 
+def check_pfsmerged_exists(datastore: str, base_collection: str, visit: int):
+    """
+    Check if pfsMerged dataset exists for a given visit.
+
+    This function validates that the pfsMerged data product is available for a visit.
+    pfsMerged is typically the last data product to arrive in the reduction pipeline,
+    so its absence indicates that visit processing may still be in progress.
+
+    Parameters
+    ----------
+    datastore : str
+        Path to Butler datastore
+    base_collection : str
+        Base collection name (e.g., "u/obsproc/s25a/20250520b")
+    visit : int
+        Visit number to check
+
+    Returns
+    -------
+    bool
+        True if pfsMerged exists for the visit, False otherwise
+
+    Notes
+    -----
+    - Uses Butler.exists() to check for pfsMerged dataset
+    - Returns False on any error (conservative approach)
+    - This check should be performed when user attempts to load a visit,
+      not during visit discovery (to avoid performance impact)
+    """
+    try:
+        butler = get_butler(datastore, base_collection, visit)
+        data_id = {"visit": visit}
+        exists = butler.exists("pfsMerged", data_id)
+
+        if not exists:
+            logger.warning(
+                f"Visit {visit}: pfsMerged not found - data reduction may still be in progress"
+            )
+            return False
+
+        logger.debug(f"Visit {visit}: pfsMerged exists")
+        return True
+
+    except Exception as e:
+        logger.warning(
+            f"Visit {visit}: Failed to check pfsMerged existence: {e}"
+        )
+        return False
+
+
 def create_pfsconfig_dataframe(pfs_config):
     """Create DataFrame from pfsConfig for Tabulator display
 

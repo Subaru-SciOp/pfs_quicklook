@@ -17,6 +17,7 @@ from quicklook_core import (
     build_1d_bokeh_figure_single_visit,
     build_1d_spectra_as_image,
     build_2d_arrays_multi_spectrograph,
+    check_pfsmerged_exists,
     create_holoviews_from_arrays,
     create_pfsconfig_dataframe,
     discover_visits,
@@ -383,6 +384,19 @@ def load_data_callback(event=None):
     try:
         status_text.object = f"**Loading visit {visit}...**"
         datastore, base_collection, _, _ = get_config()
+
+        # Check if pfsMerged exists before loading visit data
+        pfsmerged_exists = check_pfsmerged_exists(datastore, base_collection, visit)
+
+        if not pfsmerged_exists:
+            pn.state.notifications.warning(
+                f"Visit {visit} found, but data reduction may still be in progress.",
+                duration=6000
+            )
+            logger.warning(
+                f"Visit {visit}: Data reduction appears incomplete (pfsMerged not found)"
+            )
+
         pfsConfig, obcode_to_fibers, fiber_to_obcode = load_visit_data(
             datastore, base_collection, visit
         )
@@ -395,6 +409,7 @@ def load_data_callback(event=None):
             "pfsConfig": pfsConfig,
             "obcode_to_fibers": obcode_to_fibers,
             "fiber_to_obcode": fiber_to_obcode,
+            "pfsmerged_exists": pfsmerged_exists,
         }
 
         # Create pfsConfig DataFrame and display in Tabulator
@@ -529,12 +544,20 @@ def load_data_callback(event=None):
         # Always re-enable Load Data and Reset buttons
         btn_load_data.disabled = False
         btn_reset.disabled = False
-        # Enable plot buttons only if data was loaded successfully
+        # Enable plot buttons only if data was loaded successfully AND pfsMerged exists
         state = get_session_state()
         if state["visit_data"]["loaded"]:
-            btn_plot_2d.disabled = False
-            btn_plot_1d.disabled = False
-            btn_plot_1d_image.disabled = False
+            pfsmerged_available = state["visit_data"].get("pfsmerged_exists", False)
+            if pfsmerged_available:
+                # Enable all plot buttons only when pfsMerged is available
+                btn_plot_2d.disabled = False
+                btn_plot_1d.disabled = False
+                btn_plot_1d_image.disabled = False
+            else:
+                # Keep all plot buttons disabled when pfsMerged is not available
+                btn_plot_2d.disabled = True
+                btn_plot_1d.disabled = True
+                btn_plot_1d_image.disabled = True
 
 
 def on_obcode_change(event):
