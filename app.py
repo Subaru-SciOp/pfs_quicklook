@@ -25,8 +25,12 @@ from quicklook_core import (
     load_visit_data,
     reload_config,
 )
+from version import __version__
 
 pn.extension("tabulator", notifications=True)
+
+# Log application version on module load
+logger.info(f"PFS QuickLook version: {__version__}")
 
 
 # --- Session State Management ---

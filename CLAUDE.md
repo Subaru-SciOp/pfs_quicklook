@@ -1174,6 +1174,59 @@ Key differences from notebook:
 - Responsive design for web deployment
 - Production-ready error handling
 
+## Version Management
+
+### Philosophy: Git Tags as Single Source of Truth
+
+This project uses **Git tags as the sole source of version information**. This approach eliminates the risk of forgetting to update version numbers in configuration files during releases.
+
+**Key Components:**
+
+1. **[version.py](version.py)**: Dynamically retrieves version from Git tags using `git describe --tags`
+2. **[pyproject.toml](pyproject.toml)**: Contains placeholder version `0.0.0` (not used at runtime)
+3. **[app.py](app.py)**: Logs version to console on startup
+
+**Version Detection Logic:**
+
+Priority order:
+1. **Git tags** (primary): Uses `git describe --tags --match "v*"`
+2. **APP_VERSION environment variable** (fallback): For non-Git environments (e.g., Docker)
+3. **"unknown"** (last resort): If both methods fail
+
+Examples:
+- On a tagged commit: `v1.0.0`
+- 5 commits after v1.0.0: `v1.0.0-5-g1234abc`
+- No tags exist: `v0.0.0-g1234abc` (commit hash)
+- Dirty working tree: `v1.0.0-dirty`
+- Git unavailable + `APP_VERSION=v2.0.0`: `v2.0.0`
+- Git unavailable + no `APP_VERSION`: `unknown`
+
+**Release Workflow:**
+
+```bash
+# 1. Create and push a Git tag (no file edits required)
+git tag -a v1.0.0 -m "Initial stable release"
+git push origin main --tags
+
+# 2. Version automatically updates on next app startup
+# Console output: "INFO: PFS QuickLook version: v1.0.0"
+```
+
+**Benefits:**
+
+- ✅ **No manual synchronization**: Impossible to forget version updates
+- ✅ **Automatic development builds**: Unreleased commits show as `v1.0.0-N-gHASH`
+- ✅ **Clear release tracking**: Tags mark exact release points in Git history
+- ✅ **Zero maintenance**: No files to update during releases
+
+**Versioning Convention:**
+
+Follow [Semantic Versioning](https://semver.org/):
+- `v1.0.0`: Major.Minor.Patch
+- Major: Breaking changes
+- Minor: New features (backward compatible)
+- Patch: Bug fixes
+
 ## Deployment Commands
 
 ### Launch Application (Recommended)
