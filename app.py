@@ -369,7 +369,7 @@ def load_data_callback(event=None):
     Clears existing plots from tabs when loading a new visit.
     """
     if not visit_mc.value:
-        pn.state.notifications.warning("Select at least one visit.")
+        pn.state.notifications.warning("Select at least one visit.", duration=3000)
         logger.warning("No visit selected.")
         return
 
@@ -523,10 +523,10 @@ def load_data_callback(event=None):
         status_text.object = (
             f"**Loaded visit {visit}**: {num_fibers} fibers, {num_obcodes} OB codes"
         )
-        pn.state.notifications.success(f"Visit {visit} loaded successfully")
 
-        # Switch to Target Info tab to show loaded data
+        # Switch to Target Info tab to show loaded data (before notification to prevent dismissal)
         tabs.active = 0
+        pn.state.notifications.success(f"Visit {visit} loaded successfully", duration=2000)
 
         log_md.object = f"""**Data loaded**
 - visit: {visit}
@@ -535,7 +535,7 @@ def load_data_callback(event=None):
 """
 
     except Exception as e:
-        pn.state.notifications.error(f"Failed to load visit data: {e}")
+        pn.state.notifications.error(f"Failed to load visit data: {e}", duration=5000)
         logger.error(f"Failed to load visit data: {e}")
         status_text.object = "**Error loading data**"
         # On error, disable plot buttons
@@ -663,7 +663,7 @@ def clear_selection_callback(event=None):
     state["programmatic_update"] = False
 
     logger.info("Cleared OB Code and Fiber ID selections")
-    pn.state.notifications.info("Selection cleared")
+    pn.state.notifications.info("Selection cleared", duration=2000)
 
 
 def plot_2d_callback(event=None):
@@ -687,7 +687,7 @@ def plot_2d_callback(event=None):
     state = get_session_state()
 
     if not state["visit_data"]["loaded"]:
-        pn.state.notifications.warning("Load data first.")
+        pn.state.notifications.warning("Load data first.", duration=3000)
         return
 
     # Disable all buttons during processing
@@ -729,7 +729,7 @@ def plot_2d_callback(event=None):
             logger.warning(f"Ignoring malformed spectrograph label: {item}")
 
     if not spectros:
-        pn.state.notifications.warning("Select at least one spectrograph.")
+        pn.state.notifications.warning("Select at least one spectrograph.", duration=3000)
         toggle_buttons(disabled=False, include_load=True)
         return
     # Always attempt to load all 4 arms
@@ -804,7 +804,7 @@ def plot_2d_callback(event=None):
                     logger.error(
                         f"SM{spectro}: arm_results is not a list, got {type(arm_results)}: {arm_results}"
                     )
-                    pn.state.notifications.error(f"Invalid result type for SM{spectro}")
+                    pn.state.notifications.error(f"Invalid result type for SM{spectro}", duration=5000)
                     continue
 
                 # Separate successful plots from missing/error arms
@@ -843,7 +843,7 @@ def plot_2d_callback(event=None):
                 except Exception as e:
                     logger.error(f"Error iterating arm_results for SM{spectro}: {e}")
                     pn.state.notifications.error(
-                        f"Error processing arms for SM{spectro}: {e}"
+                        f"Error processing arms for SM{spectro}: {e}", duration=5000
                     )
                     continue
 
@@ -908,7 +908,7 @@ def plot_2d_callback(event=None):
                 # Only show error notification if it's not a "data not found" error
                 if error and "could not be found" not in error:
                     pn.state.notifications.error(
-                        f"Failed to create plots for SM{spectro}: {error}"
+                        f"Failed to create plots for SM{spectro}: {error}", duration=5000
                     )
                 else:
                     logger.info(f"SM{spectro}: Skipped due to missing data")
@@ -931,7 +931,7 @@ def plot_2d_callback(event=None):
         tabs.active = 1  # Switch to 2D tab
         status_text.object = f"**2D plot created for visit {visit}**"
         pn.state.notifications.success(
-            f"2D plot created for {len(spectrograph_panels)} spectrograph(s)"
+            f"2D plot created for {len(spectrograph_panels)} spectrograph(s)", duration=2000
         )
 
         fiber_info = f"{len(fibers)} selected" if fibers else "none"
@@ -944,7 +944,7 @@ def plot_2d_callback(event=None):
     except Exception as e:
         error_pane = pn.pane.Markdown(f"**Error:** {e}")
         pane_2d.objects = [error_pane]
-        pn.state.notifications.error(f"Failed to show 2D image: {e}")
+        pn.state.notifications.error(f"Failed to show 2D image: {e}", duration=5000)
         logger.error(f"Failed to show 2D image: {e}")
         status_text.object = "**Error creating 2D plot**"
     finally:
@@ -973,11 +973,11 @@ def plot_1d_callback(event=None):
     state = get_session_state()
 
     if not state["visit_data"]["loaded"]:
-        pn.state.notifications.warning("Load data first.")
+        pn.state.notifications.warning("Load data first.", duration=3000)
         return
 
     if not fibers_mc.value:
-        pn.state.notifications.warning("Select at least one fiber ID.")
+        pn.state.notifications.warning("Select at least one fiber ID.", duration=3000)
         logger.warning("No fiber ID selected.")
         return
 
@@ -1009,7 +1009,7 @@ def plot_1d_callback(event=None):
         bokeh_pane = pn.pane.Bokeh(p_fig1d, sizing_mode="scale_width")
         pane_1d.objects = [bokeh_pane]
         status_text.object = f"**1D plot created for visit {visit}**"
-        pn.state.notifications.success("1D plot created")
+        pn.state.notifications.success("1D plot created", duration=2000)
 
         log_md.object = f"""**1D plot created**
 - visit: {visit}
@@ -1018,7 +1018,7 @@ def plot_1d_callback(event=None):
     except Exception as e:
         error_pane = pn.pane.Markdown(f"**Error:** {e}")
         pane_1d.objects = [error_pane]
-        pn.state.notifications.error(f"Failed to show 1D spectra: {e}")
+        pn.state.notifications.error(f"Failed to show 1D spectra: {e}", duration=5000)
         logger.error(f"Failed to show 1D spectra: {e}")
         status_text.object = "**Error creating 1D plot**"
     finally:
@@ -1046,7 +1046,7 @@ def plot_1d_image_callback(event=None):
     state = get_session_state()
 
     if not state["visit_data"]["loaded"]:
-        pn.state.notifications.warning("Load data first.")
+        pn.state.notifications.warning("Load data first.", duration=3000)
         return
 
     # Disable all buttons during processing
@@ -1079,7 +1079,7 @@ def plot_1d_image_callback(event=None):
         hv_pane = pn.pane.HoloViews(hv_img, backend="bokeh")
         pane_1d_image.objects = [hv_pane]
         status_text.object = f"**1D spectra image created for visit {visit}**"
-        pn.state.notifications.success("1D spectra image created")
+        pn.state.notifications.success("1D spectra image created", duration=2000)
 
         fiber_info = f"{len(fibers)} selected" if fibers else "all fibers"
         log_md.object = f"""**1D spectra image created**
@@ -1090,7 +1090,7 @@ def plot_1d_image_callback(event=None):
     except Exception as e:
         error_pane = pn.pane.Markdown(f"**Error:** {e}")
         pane_1d_image.objects = [error_pane]
-        pn.state.notifications.error(f"Failed to create 1D spectra image: {e}")
+        pn.state.notifications.error(f"Failed to create 1D spectra image: {e}", duration=5000)
         logger.error(f"Failed to create 1D spectra image: {e}")
         status_text.object = "**Error creating 1D spectra image**"
     finally:
@@ -1244,11 +1244,11 @@ def check_visit_discovery():
 
         # Show notification
         if old_count == 0:
-            pn.state.notifications.success(f"Found {new_count} visits")
+            pn.state.notifications.success(f"Found {new_count} visits", duration=2000)
             logger.info(f"Initial visit discovery: {new_count} visits")
         elif new_count > old_count:
             pn.state.notifications.success(
-                f"Found {new_count - old_count} new visit(s) (total: {new_count})"
+                f"Found {new_count - old_count} new visit(s) (total: {new_count})", duration=2000
             )
             logger.info(
                 f"Visit list updated: +{new_count - old_count} visits (total: {new_count})"
@@ -1270,7 +1270,7 @@ def check_visit_discovery():
         visit_mc.value = []
         visit_mc.placeholder = "No visits found"
         visit_mc.disabled = False
-        pn.state.notifications.warning("No visits found for the specified date")
+        pn.state.notifications.warning("No visits found for the specified date", duration=3000)
 
         state.update({"status": None, "updated_cache": None})
         return False
@@ -1278,7 +1278,7 @@ def check_visit_discovery():
     elif status == "error":
         visit_mc.placeholder = "Error loading visits"
         visit_mc.disabled = False
-        pn.state.notifications.error(f"Failed to discover visits: {state['error']}")
+        pn.state.notifications.error(f"Failed to discover visits: {state['error']}", duration=5000)
 
         state.update({"status": None, "error": None})
         return False
