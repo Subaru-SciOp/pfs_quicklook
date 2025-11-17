@@ -196,17 +196,15 @@ btn_clear_selection = pn.widgets.Button(
     name="Clear Selection",
     button_type="default",
     min_width=140,
-    sizing_mode="fixed",
+    sizing_mode="stretch_width",
 )
 
 subtract_sky_chk = pn.widgets.Checkbox(name="Sky subtraction", value=True)
 detmap_overlay_switch = pn.widgets.Switch(
     name="Detector Map Overlay",
     value=True,
-    sizing_mode="fixed",
-    width=200,
+    sizing_mode="stretch_width",
     align=("start", "center"),  # Horizontal: left, Vertical: center
-    # margin=(50, 30, 0, 10),
 )
 scale_sel = pn.widgets.Select(
     name="Scale", options=["zscale", "minmax"], value="zscale"
