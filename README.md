@@ -1,5 +1,13 @@
 # PFS Quicklook Web App
 
+[![Python Version](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![Panel](https://img.shields.io/badge/Panel-1.8+-0091DA.svg)](https://panel.holoviz.org/)
+[![HoloViews](https://img.shields.io/badge/HoloViews-1.18+-A61C3C.svg)](https://holoviews.org/)
+[![GitHub issues](https://img.shields.io/github/issues/Subaru-SciOp/pfs_quicklook.svg)](https://github.com/Subaru-SciOp/pfs_quicklook/issues)
+[![GitHub last commit](https://img.shields.io/github/last-commit/Subaru-SciOp/pfs_quicklook.svg)](https://github.com/Subaru-SciOp/pfs_quicklook/commits/main)
+[![GitHub stars](https://img.shields.io/github/stars/Subaru-SciOp/pfs_quicklook.svg)](https://github.com/Subaru-SciOp/pfs_quicklook/stargazers)
+
 Web application for quick-look visualization of Prime Focus Spectrograph (PFS) data, designed for summit and remote observers to perform real-time quality assessment during observations.
 
 This app replaces the previous Jupyter notebook-based quicklook tool ([check_quick_reduction_data.ipynb](legacy/check_quick_reduction_data.ipynb)) with a production-ready web interface.
