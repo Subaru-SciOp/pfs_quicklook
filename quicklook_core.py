@@ -405,7 +405,12 @@ def discover_visits(
             logger.info(
                 f"Checking {len(new_visits)} new visits for date: {obsdate_utc}"
             )
-            results = Parallel(n_jobs=min(32, len(new_visits)), verbose=1)(
+            results = Parallel(
+                n_jobs=min(32, len(new_visits)),
+                verbose=1,
+                timeout=300,  # 5-minute timeout to handle filesystem I/O delays
+                pre_dispatch='n_jobs'  # Dispatch only n_jobs tasks at a time to reduce I/O contention
+            )(
                 delayed(check_visit_date)(visit) for visit in new_visits
             )
 
