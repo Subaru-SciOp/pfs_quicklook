@@ -445,6 +445,31 @@ pfs_quicklook/
 - Starts background visit discovery
 - Sets up auto-refresh if enabled
 
+#### Session Cleanup Functions
+
+**`_stop_periodic_callbacks(state)`**:
+
+- Stops Panel periodic callbacks stored in session state
+- Used during normal session initialization (clears old callbacks before registering new ones)
+- Logs debug information about stopped callbacks
+- Uses logger for debugging (safe in normal execution context)
+- Called from `on_session_created()` before registering new callbacks
+
+**`_cleanup_session(session_context)`**:
+
+- Cleanup function for session destruction
+- Registered with `pn.state.curdoc.on_session_destroyed()`
+- **Completely self-contained**: No external dependencies (no function calls, no logger)
+- Inline implementation to survive module reloads (dev mode) and multi-threading (production mode)
+- Silent failure by design (cannot rely on module-level imports in cleanup context)
+- See [Bug Fix: Session Cleanup Scope Issue](#bug-fix-session-cleanup-scope-issue-with-module-reloading-2025-11-18) for detailed analysis
+
+**`_ensure_session_cleanup_registered()`**:
+
+- Registers `_cleanup_session()` as a one-time cleanup hook per session
+- Uses `_pfs_callbacks_cleanup_registered` flag to prevent duplicate registration
+- Called from `on_session_created()` to ensure cleanup happens on session destruction
+
 ### Session State Management
 
 **Session State** (`pn.state.curdoc.session_context.app_state`):
@@ -486,6 +511,18 @@ app_state = {
         'status': str,               # "running", "success", "error", "no_data", or None
         'result': list,              # List of discovered visit numbers
         'error': str,                # Error message if status is "error"
+    },
+    'visit_cache': dict,             # {visit_id: obsdate_utc} - caches validated visits
+    'butler_cache': dict,            # {(datastore, collection, visit): Butler} - caches Butler instances
+    'periodic_callbacks': {
+        'discovery': object,         # Periodic callback handle for visit discovery
+        'refresh': object,           # Periodic callback handle for auto-refresh (or None)
+    },
+    'config': {
+        'datastore': str,            # Session-specific datastore path
+        'base_collection': str,      # Session-specific base collection
+        'obsdate_utc': str,          # Session-specific observation date
+        'refresh_interval': int,     # Session-specific refresh interval (seconds)
     }
 }
 ```
@@ -1065,8 +1102,12 @@ def _cleanup_session(session_context):
 **Technical Notes:**
 - Silent failure is intentional - cleanup runs in unpredictable contexts
 - No logger references - cannot rely on module-level imports being available
-- Code duplication (`_stop_periodic_callbacks` still exists for normal use) is intentional
+- **Code duplication** (`_stop_periodic_callbacks` still exists for normal use) is intentional:
+  - `_stop_periodic_callbacks()`: Used in normal execution (session start), has logger output
+  - `_cleanup_session()`: Used in session destruction, fully self-contained, no dependencies
+  - Different contexts require different implementations for maximum reliability
 - This is the nuclear option but guarantees reliability across all deployment modes
+- **Five layers of defense**: Outer try-except, None check, inner try-except, finally clause, silent catch-all
 
 ## Development Roadmap
 
