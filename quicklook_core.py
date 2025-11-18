@@ -412,7 +412,6 @@ def discover_visits(
                 backend='threading',  # Use threading instead of multiprocessing for I/O operations
                 verbose=1,
                 timeout=300,  # 5-minute timeout to handle filesystem I/O delays
-                pre_dispatch='n_jobs'  # Dispatch only n_jobs tasks at a time (no effect with threading, but kept for consistency)
             )(
                 delayed(check_visit_date)(visit) for visit in new_visits
             )
