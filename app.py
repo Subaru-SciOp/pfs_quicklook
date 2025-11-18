@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import threading
+import time
 
 import numpy as np
 import panel as pn
@@ -393,7 +394,7 @@ def load_data_callback(event=None):
         if not pfsmerged_exists:
             pn.state.notifications.warning(
                 f"Visit {visit} found, but data reduction may still be in progress.",
-                duration=6000
+                duration=6000,
             )
             logger.warning(
                 f"Visit {visit}: Data reduction appears incomplete (pfsMerged not found)"
@@ -526,7 +527,9 @@ def load_data_callback(event=None):
 
         # Switch to Target Info tab to show loaded data (before notification to prevent dismissal)
         tabs.active = 0
-        pn.state.notifications.success(f"Visit {visit} loaded successfully", duration=2000)
+        pn.state.notifications.success(
+            f"Visit {visit} loaded successfully", duration=2000
+        )
 
         log_md.object = f"""**Data loaded**
 - visit: {visit}
@@ -729,7 +732,9 @@ def plot_2d_callback(event=None):
             logger.warning(f"Ignoring malformed spectrograph label: {item}")
 
     if not spectros:
-        pn.state.notifications.warning("Select at least one spectrograph.", duration=3000)
+        pn.state.notifications.warning(
+            "Select at least one spectrograph.", duration=3000
+        )
         toggle_buttons(disabled=False, include_load=True)
         return
     # Always attempt to load all 4 arms
@@ -804,7 +809,9 @@ def plot_2d_callback(event=None):
                     logger.error(
                         f"SM{spectro}: arm_results is not a list, got {type(arm_results)}: {arm_results}"
                     )
-                    pn.state.notifications.error(f"Invalid result type for SM{spectro}", duration=5000)
+                    pn.state.notifications.error(
+                        f"Invalid result type for SM{spectro}", duration=5000
+                    )
                     continue
 
                 # Separate successful plots from missing/error arms
@@ -908,7 +915,8 @@ def plot_2d_callback(event=None):
                 # Only show error notification if it's not a "data not found" error
                 if error and "could not be found" not in error:
                     pn.state.notifications.error(
-                        f"Failed to create plots for SM{spectro}: {error}", duration=5000
+                        f"Failed to create plots for SM{spectro}: {error}",
+                        duration=5000,
                     )
                 else:
                     logger.info(f"SM{spectro}: Skipped due to missing data")
@@ -931,7 +939,8 @@ def plot_2d_callback(event=None):
         tabs.active = 1  # Switch to 2D tab
         status_text.object = f"**2D plot created for visit {visit}**"
         pn.state.notifications.success(
-            f"2D plot created for {len(spectrograph_panels)} spectrograph(s)", duration=2000
+            f"2D plot created for {len(spectrograph_panels)} spectrograph(s)",
+            duration=2000,
         )
 
         fiber_info = f"{len(fibers)} selected" if fibers else "none"
@@ -1090,7 +1099,9 @@ def plot_1d_image_callback(event=None):
     except Exception as e:
         error_pane = pn.pane.Markdown(f"**Error:** {e}")
         pane_1d_image.objects = [error_pane]
-        pn.state.notifications.error(f"Failed to create 1D spectra image: {e}", duration=5000)
+        pn.state.notifications.error(
+            f"Failed to create 1D spectra image: {e}", duration=5000
+        )
         logger.error(f"Failed to create 1D spectra image: {e}")
         status_text.object = "**Error creating 1D spectra image**"
     finally:
@@ -1248,7 +1259,8 @@ def check_visit_discovery():
             logger.info(f"Initial visit discovery: {new_count} visits")
         elif new_count > old_count:
             pn.state.notifications.success(
-                f"Found {new_count - old_count} new visit(s) (total: {new_count})", duration=2000
+                f"Found {new_count - old_count} new visit(s) (total: {new_count})",
+                duration=2000,
             )
             logger.info(
                 f"Visit list updated: +{new_count - old_count} visits (total: {new_count})"
@@ -1270,7 +1282,14 @@ def check_visit_discovery():
         visit_mc.value = []
         visit_mc.placeholder = "No visits found"
         visit_mc.disabled = False
-        pn.state.notifications.warning("No visits found for the specified date", duration=3000)
+
+        # Delay notification to ensure widget updates are fully rendered
+        # Without this delay, the notification may be dismissed prematurely
+        # due to Panel's internal rendering cycle
+        time.sleep(0.5)
+        pn.state.notifications.warning(
+            "No visits found for the specified date", duration=3000
+        )
 
         state.update({"status": None, "updated_cache": None})
         return False
@@ -1278,7 +1297,9 @@ def check_visit_discovery():
     elif status == "error":
         visit_mc.placeholder = "Error loading visits"
         visit_mc.disabled = False
-        pn.state.notifications.error(f"Failed to discover visits: {state['error']}", duration=5000)
+        pn.state.notifications.error(
+            f"Failed to discover visits: {state['error']}", duration=5000
+        )
 
         state.update({"status": None, "error": None})
         return False
