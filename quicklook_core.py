@@ -401,15 +401,18 @@ def discover_visits(
         updated_cache = cached_visits.copy()
 
         if new_visits:
-            # Parallel processing with max 32 cores
+            # Parallel processing with max 32 threads
+            # Use threading backend for I/O-bound filesystem operations
+            # (avoids process spawning overhead and potential worker timeout issues)
             logger.info(
                 f"Checking {len(new_visits)} new visits for date: {obsdate_utc}"
             )
             results = Parallel(
                 n_jobs=min(32, len(new_visits)),
+                backend='threading',  # Use threading instead of multiprocessing for I/O operations
                 verbose=1,
                 timeout=300,  # 5-minute timeout to handle filesystem I/O delays
-                pre_dispatch='n_jobs'  # Dispatch only n_jobs tasks at a time to reduce I/O contention
+                pre_dispatch='n_jobs'  # Dispatch only n_jobs tasks at a time (no effect with threading, but kept for consistency)
             )(
                 delayed(check_visit_date)(visit) for visit in new_visits
             )
