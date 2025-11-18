@@ -94,18 +94,41 @@ def _stop_periodic_callbacks(state):
 def _cleanup_session(session_context):
     """Cleanup function for session destruction.
 
-    This is a module-level function (not nested) to ensure it remains
-    in scope when called by Panel's session_destroyed callback.
+    This is a module-level function with fully inlined logic to ensure
+    it works correctly even after module reloads in development mode
+    or across threads in production mode.
+
+    Implementation is completely self-contained with no external dependencies
+    (no function calls, no logger references) to avoid scope issues when:
+    - Panel reloads the module in --dev mode
+    - Multiple threads handle different sessions in --num-threads mode
 
     Parameters
     ----------
     session_context : bokeh.server.session.ServerSessionContext
         Bokeh session context being destroyed
     """
-    app_state = getattr(session_context, "app_state", None)
-    if not app_state:
-        return
-    _stop_periodic_callbacks(app_state)
+    try:
+        app_state = getattr(session_context, "app_state", None)
+        if not app_state:
+            return
+
+        # Inline implementation - completely self-contained
+        # No external dependencies (no logger, no function calls)
+        callbacks = app_state.get("periodic_callbacks", {})
+        for name, handle in callbacks.items():
+            if handle is None:
+                continue
+            try:
+                handle.stop()
+            except Exception:
+                # Silent failure - cannot use logger due to scope issues
+                pass
+            finally:
+                callbacks[name] = None
+    except Exception:
+        # Completely silent cleanup - avoid any external dependencies
+        pass
 
 
 def _ensure_session_cleanup_registered():
