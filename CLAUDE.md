@@ -983,6 +983,51 @@ The PFS Butler uses a custom dimension structure that differs from standard LSST
 | 50 cached + 5 new    | 0.3s               | <0.05s       | 6× faster       |
 | 100% cached (no new) | 0.3s               | <0.01s       | 30× faster      |
 
+### Bug Fix: Session Cleanup Scope Issue (2025-11-18)
+
+**Problem:**
+Intermittent warning on session destruction:
+```
+WARNING: panel.io.application - DocumentLifecycleHandler on_session_destroyed
+callback <function _ensure_session_cleanup_registered.<locals>._cleanup at ...>
+failed with following error: name '_stop_periodic_callbacks' is not defined
+```
+
+**Root Cause:**
+- `_cleanup` function was defined as a **nested function** inside `_ensure_session_cleanup_registered()`
+- When registered as `on_session_destroyed` callback, the function was executed in a different context where the outer scope may no longer exist
+- Under certain conditions (abnormal session termination, concurrent session destruction), the closure's reference to `_stop_periodic_callbacks` was lost
+
+**Solution:**
+Moved `_cleanup` function to **module-level** as `_cleanup_session()` to ensure stable scope:
+
+```python
+# Before (nested function - unstable scope)
+def _ensure_session_cleanup_registered():
+    def _cleanup(session_context):  # <-- Problem: nested function
+        _stop_periodic_callbacks(app_state)
+    pn.state.curdoc.on_session_destroyed(_cleanup)
+
+# After (module-level function - stable scope)
+def _cleanup_session(session_context):  # <-- Solution: module-level
+    """Cleanup function for session destruction."""
+    app_state = getattr(session_context, "app_state", None)
+    if not app_state:
+        return
+    _stop_periodic_callbacks(app_state)
+
+def _ensure_session_cleanup_registered():
+    pn.state.curdoc.on_session_destroyed(_cleanup_session)
+```
+
+**Files Modified:**
+- [app.py:94-120](app.py#L94-L120): Extracted `_cleanup_session()` to module level
+
+**Impact:**
+- Eliminates intermittent warning on session destruction
+- More robust cleanup for abnormal session terminations
+- No functional changes to session lifecycle
+
 ## Development Roadmap
 
 ### High Priority

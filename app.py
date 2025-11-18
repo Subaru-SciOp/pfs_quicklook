@@ -91,6 +91,23 @@ def _stop_periodic_callbacks(state):
             callbacks[name] = None
 
 
+def _cleanup_session(session_context):
+    """Cleanup function for session destruction.
+
+    This is a module-level function (not nested) to ensure it remains
+    in scope when called by Panel's session_destroyed callback.
+
+    Parameters
+    ----------
+    session_context : bokeh.server.session.ServerSessionContext
+        Bokeh session context being destroyed
+    """
+    app_state = getattr(session_context, "app_state", None)
+    if not app_state:
+        return
+    _stop_periodic_callbacks(app_state)
+
+
 def _ensure_session_cleanup_registered():
     """Register a one-time cleanup hook per Bokeh session to stop callbacks."""
 
@@ -98,13 +115,8 @@ def _ensure_session_cleanup_registered():
     if getattr(ctx, "_pfs_callbacks_cleanup_registered", False):
         return
 
-    def _cleanup(session_context):
-        app_state = getattr(session_context, "app_state", None)
-        if not app_state:
-            return
-        _stop_periodic_callbacks(app_state)
-
-    pn.state.curdoc.on_session_destroyed(_cleanup)
+    # Use module-level function to avoid scope issues
+    pn.state.curdoc.on_session_destroyed(_cleanup_session)
     ctx._pfs_callbacks_cleanup_registered = True
 
 
