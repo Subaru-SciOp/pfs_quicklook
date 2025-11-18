@@ -106,6 +106,10 @@ An interactive table showing details for each fiber:
 **Table Features**:
 
 - **Pagination**: 250 rows per page
+- **Checkbox Selection**: Check rows to select fibers for 1D spectra plotting
+  - Click checkboxes to select individual fibers
+  - Selected rows automatically update **Fiber ID** and **OB Code** widgets in sidebar
+  - Selections sync bidirectionally: changes in sidebar also update table checkboxes
 - **Filtering**: Click column headers to filter by value
 - **Visual styling**:
   - **Bold text**: SCIENCE targets with GOOD status (important targets)
@@ -115,9 +119,10 @@ An interactive table showing details for each fiber:
 
 **Table Controls**:
 
-- Sort by clicking column headers
-- Filter using header text boxes
-- Navigate pages using pagination controls at bottom
+- **Select fibers**: Click checkboxes in leftmost column
+- **Sort**: Click column headers to sort
+- **Filter**: Use header text boxes to filter rows
+- **Navigate**: Use pagination controls at bottom
 
 ## Visit Auto-Refresh
 
@@ -211,9 +216,13 @@ You must manually select a visit from the dropdown. There is no automatic loadin
 After successfully loading visit data, you can:
 
 1. **View fiber configuration**: Already displayed in Target Info tab
-2. **Create 2D images**: See [2D Images Guide](2d-images.md)
-3. **View 1D spectra**: See [1D Spectra Guide](1d-spectra.md)
-4. **Select specific fibers**: Use OB Code or Fiber ID dropdowns for filtering
+2. **Select fibers for visualization**: Three ways to select fibers:
+   - Check rows in the **Target Info** table (checkbox column)
+   - Select from **OB Code** dropdown in sidebar
+   - Select from **Fiber ID** dropdown in sidebar
+   - All three methods sync automatically
+3. **Create 2D images**: See [2D Images Guide](2d-images.md)
+4. **View 1D spectra**: See [1D Spectra Guide](1d-spectra.md)
 
 ## See Also
 

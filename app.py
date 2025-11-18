@@ -442,6 +442,9 @@ def load_data_callback(event=None):
                 return ["color: #CCCCCC"] * len(row)
 
         # Configure column-specific settings
+        # Note: Explicitly list all columns to ensure fiberId is visible with selectable="checkbox"
+        logger.info(f"DataFrame columns before Tabulator: {df_pfsconfig.columns.tolist()}")
+
         tabulator = pn.widgets.Tabulator(
             df_pfsconfig,
             pagination="local",
@@ -449,52 +452,90 @@ def load_data_callback(event=None):
             sizing_mode="stretch_width",
             height=700,
             show_index=False,
-            layout="fit_data_table",
             disabled=True,  # Read-only table
+            selectable="checkbox",
+            layout="fit_columns",  # Changed from fit_data_table to fit_columns
+            frozen_columns=["fiberId"],  # Freeze fiberId column to ensure visibility
             widths={
-                "objId": 200,  # Wide enough for 64-bit integers (up to 20 digits)
-                "obCode": 300,  # Double width for observation codes
+                "fiberId": 90,
+                "spectrograph": 60,
+                "objId": 200,
+                "obCode": 300,
             },
-            text_align={"spectrograph": "center", "catId": "right"},
+            text_align={"fiberId": "center", "spectrograph": "center", "catId": "right"},
             formatters={
-                "catId": NumberFormatter(
-                    format="0"
-                ),  # Display without thousand separators
+                "catId": NumberFormatter(format="0"),
             },
-            configuration={
-                "columns": [
-                    {"field": "fiberId", "headerFilter": True, "title": "Fiber ID"},
-                    {
-                        "field": "spectrograph",
-                        "headerFilter": True,
-                        "title": "Sp",
-                    },
-                    {"field": "objId", "headerFilter": True, "title": "Object ID"},
-                    {"field": "obCode", "headerFilter": True, "title": "OB Code"},
-                    {"field": "ra", "headerFilter": False, "title": "RA"},
-                    {"field": "dec", "headerFilter": False, "title": "Dec"},
-                    {"field": "catId", "headerFilter": True, "title": "Catalog ID"},
-                    {
-                        "field": "targetType",
-                        "headerFilter": True,
-                        "title": "Target Type",
-                    },
-                    {
-                        "field": "fiberStatus",
-                        "headerFilter": True,
-                        "title": "Fiber Status",
-                    },
-                    {
-                        "field": "proposalId",
-                        "headerFilter": True,
-                        "title": "Proposal ID",
-                    },
-                ],
+            titles={
+                "fiberId": "Fiber ID",
+                "spectrograph": "Sp",
+                "objId": "Object ID",
+                "obCode": "OB Code",
+                "ra": "RA",
+                "dec": "Dec",
+                "catId": "Catalog ID",
+                "targetType": "Target Type",
+                "fiberStatus": "Fiber Status",
+                "proposalId": "Proposal ID",
+            },
+            header_filters={
+                "fiberId": {"type": "input", "func": "like", "placeholder": "Filter"},
+                "spectrograph": {"type": "input", "func": "like", "placeholder": "Filter"},
+                "objId": {"type": "input", "func": "like", "placeholder": "Filter"},
+                "obCode": {"type": "input", "func": "like", "placeholder": "Filter"},
+                "catId": {"type": "input", "func": "like", "placeholder": "Filter"},
+                "targetType": {"type": "input", "func": "like", "placeholder": "Filter"},
+                "fiberStatus": {"type": "input", "func": "like", "placeholder": "Filter"},
+                "proposalId": {"type": "input", "func": "like", "placeholder": "Filter"},
             },
         )
 
         # Apply styling
         tabulator.style.apply(style_science_bad_fibers, axis=1)
+
+        # Add selection change callback for tabulator
+        def on_tabulator_selection_change(event):
+            """Update Fiber ID and OB Code widgets when tabulator selection changes
+
+            Parameters
+            ----------
+            event : panel.io.state.Event
+                Panel widget selection change event
+            """
+            state = get_session_state()
+            if state.get("programmatic_update", False):
+                return
+
+            # Get selected row indices
+            selected_indices = event.new
+            if not selected_indices:
+                # Clear fiber and OB code selection if no rows selected
+                state["programmatic_update"] = True
+                fibers_mc.value = []
+                obcode_mc.value = []
+                state["programmatic_update"] = False
+                logger.debug("Tabulator selection cleared, widgets cleared")
+                return
+
+            # Extract fiberIds from selected rows
+            selected_fiber_ids = df_pfsconfig.iloc[selected_indices]["fiberId"].tolist()
+
+            # Get OB codes for selected fiber IDs
+            fiber_to_obcode = state["visit_data"]["fiber_to_obcode"]
+            obcodes = set()
+            for fiber_id in selected_fiber_ids:
+                obcode = fiber_to_obcode.get(fiber_id)
+                if obcode:
+                    obcodes.add(obcode)
+
+            # Update both Fiber ID and OB Code widgets
+            state["programmatic_update"] = True
+            fibers_mc.value = selected_fiber_ids
+            obcode_mc.value = sorted(obcodes)
+            state["programmatic_update"] = False
+            logger.info(f"Tabulator selection changed: {len(selected_fiber_ids)} fibers, {len(obcodes)} OB codes selected")
+
+        tabulator.param.watch(on_tabulator_selection_change, "selection")
 
         # Create header information from pfsConfig
         header_info = f"""
@@ -566,10 +607,11 @@ def load_data_callback(event=None):
 
 
 def on_obcode_change(event):
-    """Update Fiber ID selection based on OB Code selection
+    """Update Fiber ID selection and tabulator based on OB Code selection
 
     Callback for OB Code widget value changes. Automatically selects
-    all fiber IDs associated with the selected OB codes.
+    all fiber IDs associated with the selected OB codes and updates
+    tabulator selection to match.
 
     Parameters
     ----------
@@ -578,7 +620,7 @@ def on_obcode_change(event):
 
     Notes
     -----
-    Implements bidirectional synchronization between OB Code and Fiber ID.
+    Implements bidirectional synchronization between OB Code, Fiber ID, and Tabulator.
     Skips update if programmatic or data not loaded.
     """
     state = get_session_state()
@@ -593,9 +635,26 @@ def on_obcode_change(event):
     for obcode in selected_obcodes:
         fiber_ids.extend(obcode_to_fibers.get(obcode, []))
 
+    # Remove duplicates and sort
+    unique_fiber_ids = sorted(set(fiber_ids))
+
     # Update fiber selection
     state["programmatic_update"] = True
-    fibers_mc.value = sorted(set(fiber_ids))
+    fibers_mc.value = unique_fiber_ids
+
+    # Update tabulator selection to match fiber selection
+    # pane_pfsconfig.objects = [header_pane, tabulator]
+    # So objects[1] is the tabulator widget
+    if len(pane_pfsconfig.objects) == 2:
+        tabulator = pane_pfsconfig.objects[1]
+        if hasattr(tabulator, 'value') and tabulator.value is not None:
+            # Find row indices that match selected fiber IDs
+            df = tabulator.value
+            if 'fiberId' in df.columns:
+                selected_indices = df.index[df['fiberId'].isin(unique_fiber_ids)].tolist()
+                tabulator.selection = selected_indices
+                logger.debug(f"Updated tabulator selection: {len(selected_indices)} rows")
+
     state["programmatic_update"] = False
 
     logger.info(
@@ -604,10 +663,11 @@ def on_obcode_change(event):
 
 
 def on_fiber_change(event):
-    """Update OB Code selection based on Fiber ID selection
+    """Update OB Code selection and tabulator based on Fiber ID selection
 
     Callback for Fiber ID widget value changes. Automatically selects
-    all OB codes associated with the selected fiber IDs.
+    all OB codes associated with the selected fiber IDs and updates
+    tabulator selection to match.
 
     Parameters
     ----------
@@ -616,7 +676,7 @@ def on_fiber_change(event):
 
     Notes
     -----
-    Implements bidirectional synchronization between Fiber ID and OB Code.
+    Implements bidirectional synchronization between Fiber ID, OB Code, and Tabulator.
     Skips update if programmatic or data not loaded.
     """
     state = get_session_state()
@@ -636,16 +696,30 @@ def on_fiber_change(event):
     # Update OB code selection
     state["programmatic_update"] = True
     obcode_mc.value = sorted(obcodes)
+
+    # Update tabulator selection to match fiber selection
+    # pane_pfsconfig.objects = [header_pane, tabulator]
+    # So objects[1] is the tabulator widget
+    if len(pane_pfsconfig.objects) == 2:
+        tabulator = pane_pfsconfig.objects[1]
+        if hasattr(tabulator, 'value') and tabulator.value is not None:
+            # Find row indices that match selected fiber IDs
+            df = tabulator.value
+            if 'fiberId' in df.columns:
+                selected_indices = df.index[df['fiberId'].isin(selected_fibers)].tolist()
+                tabulator.selection = selected_indices
+                logger.debug(f"Updated tabulator selection: {len(selected_indices)} rows")
+
     state["programmatic_update"] = False
 
     logger.info(f"Selected {len(obcodes)} OB codes from {len(selected_fibers)} fibers")
 
 
 def clear_selection_callback(event=None):
-    """Clear both OB Code and Fiber ID selections
+    """Clear OB Code, Fiber ID, and Tabulator selections
 
-    Callback for Clear Selection button. Clears both OB Code and Fiber ID
-    widget selections simultaneously.
+    Callback for Clear Selection button. Clears all three widget
+    selections simultaneously (OB Code, Fiber ID, and Tabulator).
 
     Parameters
     ----------
@@ -659,13 +733,23 @@ def clear_selection_callback(event=None):
     """
     state = get_session_state()
 
-    # Clear both selections
+    # Clear all selections
     state["programmatic_update"] = True
     obcode_mc.value = []
     fibers_mc.value = []
+
+    # Clear tabulator selection
+    # pane_pfsconfig.objects = [header_pane, tabulator]
+    # So objects[1] is the tabulator widget
+    if len(pane_pfsconfig.objects) == 2:
+        tabulator = pane_pfsconfig.objects[1]
+        if hasattr(tabulator, 'selection'):
+            tabulator.selection = []
+            logger.debug("Cleared tabulator selection")
+
     state["programmatic_update"] = False
 
-    logger.info("Cleared OB Code and Fiber ID selections")
+    logger.info("Cleared OB Code, Fiber ID, and Tabulator selections")
     pn.state.notifications.info("Selection cleared", duration=2000)
 
 

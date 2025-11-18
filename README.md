@@ -16,7 +16,8 @@ This app replaces the previous Jupyter notebook-based quicklook tool ([check_qui
 
 ## Key Features
 
-- **Fiber configuration viewer** with interactive table showing pointing and fiber details
+- **Fiber configuration viewer** with interactive table and checkbox selection
+- **Three-way fiber selection**: Select fibers via table, OB Code, or Fiber ID widgets
 - **Interactive 2D/1D spectral visualization** with zoom, pan, and hover tools
 - **Multi-user support** with per-session state isolation
 - **Automatic visit discovery** with configurable auto-refresh
