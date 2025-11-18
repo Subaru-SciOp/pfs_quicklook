@@ -120,6 +120,9 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
 - Automatic tab switching: switches to 2D/1D tab after plot creation
 - Fixed-height status display (60px) to prevent layout shifts
 - Responsive design with min/max width constraints (280-400px sidebar)
+  - All sidebar widgets use `sizing_mode="stretch_width"` for consistent alignment
+  - Cross-browser CSS ensures MultiChoice widgets respect container width
+  - Buttons and widgets align vertically without overflow
 - Non-blocking UI: visit discovery runs in background, UI remains responsive
 
 #### Workflow & Data Flow
