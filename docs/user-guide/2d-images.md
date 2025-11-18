@@ -6,6 +6,12 @@ This guide explains how to visualize and interact with 2D spectral images in PFS
 
 The 2D image view displays sky-subtracted spectral images from the detector. These images show the full 2D spectrum for each fiber, allowing you to assess data quality, check for instrumental issues, and verify sky subtraction quality.
 
+## Screenshot
+
+[![2D Spectral Images](../img/screenshot_2dimage.png)](../img/screenshot_2dimage.png)
+
+The screenshot shows the interactive 2D image view after sky subtraction for all spectrographs and arms in the main panel.
+
 ## Prerequisites
 
 Before creating 2D images, you must:
@@ -17,20 +23,28 @@ Before creating 2D images, you must:
 
 ### Step-by-Step Instructions
 
-1. **Click "Show 2D Images" Button**:
+1. **Select Spectrograph(s)**:
+
+   - In the sidebar, use the **Spectrograph** checkbox group to select which spectrographs you want to visualize
+   - Select one or more spectrographs: SM1, SM2, SM3, or SM4
+   - All spectrographs are selected by default
+   - You can deselect any spectrograph you don't need
+   - **Tip**: Selecting fewer spectrographs reduces processing time
+
+2. **Click "Show 2D Images" Button**:
 
    - Button is enabled after loading visit data
    - Application begins processing images
    - Progress indicated in status display
 
-2. **Wait for Processing**:
+3. **Wait for Processing**:
 
    - Processing time varies based on number of selected spectrographs and arms
    - Typically 30-60 seconds for all selected spectrographs
    - UI remains responsive during processing
    - You can continue working in other tabs
 
-3. **View Results**:
+4. **View Results**:
    - Application automatically switches to the **2D Images** tab
    - Images appear in tabbed layout (one tab per spectrograph)
 
@@ -103,17 +117,6 @@ Each 2D image plot provides interactive controls through the Bokeh toolbar:
 - **Box Select**: Select a region (for future features)
 - **Wheel Zoom**: Enable/disable wheel zoom
 - **Help**: Show help for interactive tools
-
-## Screenshot
-
-[![2D Spectral Images](../img/screenshot_2dimage.png)](../img/screenshot_2dimage.png)
-
-The screenshot shows:
-
-- Tabbed layout with SM1-4 tabs
-- Horizontal arrangement of arms within each tab
-- Interactive Bokeh plots with toolbars
-- Sky-subtracted 2D spectral images
 
 ## What to Look For
 
