@@ -43,6 +43,12 @@ Shows selected fiber spectra as interactive line plots:
 
 ## Gallery View: 1D Image
 
+### Screenshot
+
+[![1D Gallery View](../img/screenshot_pfsmerged.png)](../img/screenshot_pfsmerged.png)
+
+The screenshot shows the collection of 1D spectra (`pfsMerged`) in gallery format in the main panel.
+
 ### Creating the Gallery View
 
 1. Click the **"Show 1D Spectra Image"** button in the Plot Controls section
@@ -105,18 +111,6 @@ The gallery view provides interactive controls through the Bokeh toolbar:
 - ❌ Unusually bright/dark fibers (processing issues)
 - ❌ Discontinuities or gaps in spectra
 
-### Screenshot
-
-[![1D Gallery View](../img/screenshot_pfsmerged.png)](../img/screenshot_pfsmerged.png)
-
-The screenshot shows:
-
-- Full gallery of fiber spectra
-- Color-coded flux intensity
-- Horizontal wavelength axis
-- Vertical fiber ID axis
-- Interactive Bokeh controls
-
 ### Use Cases
 
 **Best for**:
@@ -136,6 +130,12 @@ The screenshot shows:
 ---
 
 ## Individual View: Show 1D Spectra
+
+### Screenshot
+
+[![Individual 1D Spectra](../img/screenshot_1dspec.png)](../img/screenshot_1dspec.png)
+
+The screenshot shows the interactive individual 1D spectra view in the main panel.
 
 ### Selecting Fibers
 
@@ -257,18 +257,6 @@ The 1D Spectra plot shows:
 - **Undo/Redo**: Undo or redo zoom/pan actions
 - **Reset**: Restore original view
 - **Save**: Download plot as PNG image
-
-### Screenshot
-
-[![Individual 1D Spectra](../img/screenshot_1dspec.png)](../img/screenshot_1dspec.png)
-
-The screenshot shows:
-
-- Multiple fiber spectra overlaid with different colors
-- Interactive legend on right side
-- Wavelength vs flux plot
-- Error bands (shaded regions)
-- Interactive Bokeh toolbar
 
 ### Tips for Effective Use
 

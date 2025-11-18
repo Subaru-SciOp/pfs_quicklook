@@ -6,6 +6,12 @@ This guide explains how to load visit data into PFS QuickLook for visualization 
 
 Loading visit data is the first step in the QuickLook workflow. This operation retrieves the fiber configuration and prepares the application for creating 2D and 1D visualizations.
 
+## Screenshot
+
+[![Load Visit Interface](../img/screenshot_loadvisit.png)](../img/screenshot_loadvisit.png)
+
+The screenshot shows the pointing and target information loaded in the main panel after a successful visit load.
+
 ## Before You Start
 
 ### Check Configuration
@@ -20,17 +26,7 @@ This configuration is loaded from the server's `.env` file and automatically upd
 
 ## Step-by-Step Instructions
 
-### 1. Select Spectrograph(s)
-
-In the sidebar's **Instrument Settings** section, select which spectrographs you want to visualize:
-
-- Use the checkbox group to select one or more spectrographs (1, 2, 3, or 4)
-- All spectrographs are selected by default
-- You can deselect any spectrograph you don't need
-
-**Tip**: Selecting fewer spectrographs reduces loading time for 2D images.
-
-### 2. Select Visit
+### 1. Select Visit
 
 In the **Data Selection** section, choose a visit from the dropdown menu:
 
@@ -42,12 +38,13 @@ In the **Data Selection** section, choose a visit from the dropdown menu:
    - Type a visit number to search (e.g., typing `126714` will filter to matching visits)
 
 **About Visit Lists**:
+
 - The visit list is automatically discovered when you first load the page
 - Initial discovery may take 10-20 seconds depending on the number of visits
 - Visit list automatically refreshes based on the configured interval (default: 5 minutes)
 - Only visits matching the configured observation date are shown
 
-### 3. Load Data
+### 2. Load Visit Data
 
 Once you've selected a visit:
 
@@ -58,11 +55,12 @@ Once you've selected a visit:
    - Enable the Show 2D Images, Show 1D Spectra, and Show 1D Spectra Image buttons
 3. Watch the status display for confirmation
 
-### 4. Verify Loading Success
+### 3. Verify Loading Success
 
 After loading completes, you should see:
 
 ✅ **Status message**: `Loaded visit XXXXX: N fibers, M OB codes`
+
 - `XXXXX` is your visit number
 - `N` is the total number of fibers
 - `M` is the number of unique OB codes
@@ -82,6 +80,7 @@ After loading data, the application automatically switches to the **Target Info*
 ### Visit Header Information
 
 At the top of the tab, you'll see:
+
 - **pfsDesignId**: Design identifier (hexadecimal)
 - **RA/Dec Boresight**: Telescope pointing coordinates
 - **Position Angle**: Rotator position
@@ -93,6 +92,7 @@ At the top of the tab, you'll see:
 An interactive table showing details for each fiber:
 
 **Columns**:
+
 - **fiberId**: Fiber identifier (1-2604)
 - **spectrograph**: Which spectrograph module (1-4)
 - **objId**: Object identifier
@@ -104,6 +104,7 @@ An interactive table showing details for each fiber:
 - **proposalId**: Proposal identifier
 
 **Table Features**:
+
 - **Pagination**: 250 rows per page
 - **Filtering**: Click column headers to filter by value
 - **Visual styling**:
@@ -113,20 +114,10 @@ An interactive table showing details for each fiber:
   - **Light gray**: Other target types
 
 **Table Controls**:
+
 - Sort by clicking column headers
 - Filter using header text boxes
 - Navigate pages using pagination controls at bottom
-
-## Screenshot
-
-[![Load Visit Interface](../img/screenshot_loadvisit.png)](../img/screenshot_loadvisit.png)
-
-The screenshot shows:
-- Spectrograph selection checkbox group
-- Visit selection dropdown (with search capability)
-- Load Visit button
-- Status display showing loaded visit information
-- OB Code and Fiber ID dropdowns (populated after loading)
 
 ## Visit Auto-Refresh
 
@@ -148,6 +139,7 @@ You can continue working with loaded data while the visit list refreshes.
 **Currently**: Only one visit can be loaded at a time.
 
 If you load a new visit:
+
 - Previous visit data is cleared
 - All plots are removed
 - Fiber selections are reset
@@ -165,11 +157,13 @@ You must manually select a visit from the dropdown. There is no automatic loadin
 **Symptom**: Visit dropdown is empty
 
 **Possible Causes**:
+
 1. No data for the configured observation date
 2. Incorrect base collection name
 3. Datastore path is incorrect
 
 **Solutions**:
+
 1. Check the configuration display - verify date, collection, and datastore
 2. Try changing observation date (requires administrator to update `.env`)
 3. Contact administrator to verify configuration
@@ -180,6 +174,7 @@ You must manually select a visit from the dropdown. There is no automatic loadin
 **Symptom**: Button click has no effect
 
 **Solutions**:
+
 1. Verify a visit is selected in the dropdown
 2. Check browser console for JavaScript errors (F12 → Console tab)
 3. Try reloading the browser page
@@ -190,11 +185,13 @@ You must manually select a visit from the dropdown. There is no automatic loadin
 **Symptom**: Loading takes longer than expected (>10 seconds)
 
 **Possible Causes**:
+
 1. Network latency to datastore
 2. Large pfsConfig file
 3. Server under heavy load
 
 **Solutions**:
+
 1. Wait patiently - first load after application restart may be slower
 2. Subsequent loads should be faster due to caching
 3. Contact administrator if consistently slow
@@ -204,6 +201,7 @@ You must manually select a visit from the dropdown. There is no automatic loadin
 **Symptom**: Configuration display shows incorrect or outdated values
 
 **Solutions**:
+
 1. Reload your browser page (F5 or Ctrl+R)
    - Configuration is loaded fresh on each browser session start
 2. Contact administrator to verify `.env` file on server
