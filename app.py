@@ -607,10 +607,14 @@ def load_data_callback(event=None):
             f"**Loaded visit {visit}**: {num_fibers} fibers, {num_obcodes} OB codes"
         )
 
-        # Switch to Target Info tab to show loaded data (before notification to prevent dismissal)
+        # Switch to Target Info tab to show loaded data
         tabs.active = 0
-        pn.state.notifications.success(
-            f"Visit {visit} loaded successfully", duration=2000
+
+        # Show notification on next tick to avoid race condition with widget/tab updates
+        show_notification_on_next_tick(
+            f"Visit {visit} loaded successfully",
+            notification_type="success",
+            duration=2000
         )
 
         log_md.object = f"""**Data loaded**
@@ -1492,7 +1496,6 @@ def on_session_created():
         f"Session started with DATASTORE={datastore}, BASE_COLLECTION={base_collection}, "
         f"OBSDATE_UTC={obsdate_utc}, VISIT_REFRESH_INTERVAL={refresh_interval}s"
     )
-    pn.state.notifications.info("Configuration reloaded from .env file", duration=3000)
 
     # Initialize session state and store configuration
     session_state = get_session_state()
@@ -1508,6 +1511,13 @@ def on_session_created():
         f"**Datastore:** {datastore}<br>"
         f"**Base collection:** {base_collection}<br>"
         f"**Observation Date (UTC):** {obsdate_utc}"
+    )
+
+    # Show notification on next tick to avoid race condition with widget updates
+    show_notification_on_next_tick(
+        "Configuration reloaded from .env file",
+        notification_type="info",
+        duration=3000
     )
 
     # Reset visit widget to loading state
