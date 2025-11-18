@@ -115,6 +115,8 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
 **UI Features**:
 
 - Toast notifications for warnings, errors, and success messages
+  - Uses Bokeh's `add_next_tick_callback` to prevent race conditions with widget updates
+  - Ensures notifications display for full duration without premature dismissal
 - Automatic tab switching: switches to 2D/1D tab after plot creation
 - Fixed-height status display (60px) to prevent layout shifts
 - Responsive design with min/max width constraints (280-400px sidebar)
@@ -334,6 +336,15 @@ pfs_quicklook/
 
 - Creates 2D image representation of 1D spectra (each row = one fiber)
 - Returns: HoloViews Image object
+
+#### app.py Helper Functions
+
+**`show_notification_on_next_tick(message, notification_type, duration)`**:
+
+- Schedules notification display on next Bokeh event loop tick
+- Uses `pn.state.curdoc.add_next_tick_callback()` to avoid race conditions
+- Prevents notifications from being dismissed prematurely due to concurrent widget updates
+- Applied to all notifications that occur after widget state changes
 
 #### app.py Callbacks
 
