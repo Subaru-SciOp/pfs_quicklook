@@ -1417,6 +1417,7 @@ def build_1d_bokeh_figure_single_visit(
         tools="pan,wheel_zoom,box_zoom,undo,redo,reset,save",
         active_drag="box_zoom",  # デフォルトツールをbox zoomに設定
         sizing_mode="scale_width",
+        toolbar_location="above",  # Display toolbar above the plot
     )
 
     # Add hover tool
