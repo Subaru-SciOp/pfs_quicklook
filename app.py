@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import threading
-import time
 
 import numpy as np
 import panel as pn
@@ -107,6 +106,48 @@ def _ensure_session_cleanup_registered():
 
     pn.state.curdoc.on_session_destroyed(_cleanup)
     ctx._pfs_callbacks_cleanup_registered = True
+
+
+def show_notification_on_next_tick(message, notification_type="info", duration=3000):
+    """Show notification on next Bokeh event loop tick
+
+    Uses Bokeh's add_next_tick_callback to ensure notification is displayed
+    after widget updates have been sent to the browser, avoiding race conditions
+    where notifications are dismissed prematurely due to concurrent widget rendering.
+
+    This is the proper solution for notification timing issues, as it uses Bokeh's
+    internal event loop timing rather than arbitrary delays.
+
+    Parameters
+    ----------
+    message : str
+        Notification message to display
+    notification_type : str, optional
+        Type of notification: "success", "warning", "error", or "info" (default: "info")
+    duration : int, optional
+        Display duration in milliseconds (default: 3000)
+
+    Notes
+    -----
+    This function must be called within a Bokeh server context where pn.state.curdoc
+    is available. It will have no effect in standalone contexts.
+    """
+    def _show_notification():
+        if notification_type == "success":
+            pn.state.notifications.success(message, duration=duration)
+        elif notification_type == "warning":
+            pn.state.notifications.warning(message, duration=duration)
+        elif notification_type == "error":
+            pn.state.notifications.error(message, duration=duration)
+        else:
+            pn.state.notifications.info(message, duration=duration)
+
+    # Schedule notification for next tick
+    if pn.state.curdoc is not None:
+        pn.state.curdoc.add_next_tick_callback(_show_notification)
+    else:
+        # Fallback for non-server contexts (shouldn't happen in production)
+        _show_notification()
 
 
 def should_skip_update(state):
@@ -1337,14 +1378,19 @@ def check_visit_discovery():
             if not all(v in discovered_visits for v in current_selection):
                 visit_mc.value = []
 
-        # Show notification
+        # Show notification on next tick to avoid race condition with widget updates
         if old_count == 0:
-            pn.state.notifications.success(f"Found {new_count} visits", duration=2000)
+            show_notification_on_next_tick(
+                f"Found {new_count} visits",
+                notification_type="success",
+                duration=2000
+            )
             logger.info(f"Initial visit discovery: {new_count} visits")
         elif new_count > old_count:
-            pn.state.notifications.success(
+            show_notification_on_next_tick(
                 f"Found {new_count - old_count} new visit(s) (total: {new_count})",
-                duration=2000,
+                notification_type="success",
+                duration=2000
             )
             logger.info(
                 f"Visit list updated: +{new_count - old_count} visits (total: {new_count})"
@@ -1367,12 +1413,11 @@ def check_visit_discovery():
         visit_mc.placeholder = "No visits found"
         visit_mc.disabled = False
 
-        # Delay notification to ensure widget updates are fully rendered
-        # Without this delay, the notification may be dismissed prematurely
-        # due to Panel's internal rendering cycle
-        time.sleep(0.5)
-        pn.state.notifications.warning(
-            "No visits found for the specified date", duration=3000
+        # Show notification on next tick to avoid race condition with widget updates
+        show_notification_on_next_tick(
+            "No visits found for the specified date",
+            notification_type="warning",
+            duration=3000
         )
 
         state.update({"status": None, "updated_cache": None})
@@ -1381,8 +1426,12 @@ def check_visit_discovery():
     elif status == "error":
         visit_mc.placeholder = "Error loading visits"
         visit_mc.disabled = False
-        pn.state.notifications.error(
-            f"Failed to discover visits: {state['error']}", duration=5000
+
+        # Show notification on next tick to avoid race condition with widget updates
+        show_notification_on_next_tick(
+            f"Failed to discover visits: {state['error']}",
+            notification_type="error",
+            duration=5000
         )
 
         state.update({"status": None, "error": None})
