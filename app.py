@@ -218,6 +218,7 @@ visit_mc = pn.widgets.MultiChoice(
     options=[],
     max_items=1,  # temporary limit to single visit mode
     placeholder="Loading visits...",  # Initial state shows loading
+    sizing_mode="stretch_width",
 )
 
 obcode_mc = pn.widgets.MultiChoice(
@@ -225,6 +226,7 @@ obcode_mc = pn.widgets.MultiChoice(
     options=[],
     option_limit=20,
     search_option_limit=10,
+    sizing_mode="stretch_width",
 )
 
 fibers_mc = pn.widgets.MultiChoice(
@@ -232,12 +234,12 @@ fibers_mc = pn.widgets.MultiChoice(
     options=np.arange(1, 2605, dtype=int).tolist(),
     option_limit=20,
     search_option_limit=10,
+    sizing_mode="stretch_width",
 )
 
 btn_clear_selection = pn.widgets.Button(
     name="Clear Selection",
     button_type="default",
-    min_width=140,
     sizing_mode="stretch_width",
 )
 
@@ -269,7 +271,6 @@ btn_plot_1d = pn.widgets.Button(
     name="Show 1D Spectra",
     button_type="primary",
     disabled=True,
-    min_width=140,
     sizing_mode="stretch_width",
 )
 btn_reset = pn.widgets.Button(name="Reset", sizing_mode="stretch_width")
@@ -1592,7 +1593,10 @@ sidebar = pn.Column(
     # btn_clear_selection,
     obcode_mc,
     fibers_mc,
-    pn.Row(btn_plot_1d, btn_clear_selection),
+    pn.Column(
+        pn.Row(btn_plot_1d, btn_clear_selection, sizing_mode="stretch_width"),
+        sizing_mode="stretch_width",
+    ),
     pn.layout.Divider(),
     pn.Column(btn_reset),
     pn.layout.Divider(),
@@ -1619,6 +1623,19 @@ pn.template.FastListTemplate(
 
         :root {
             --body-font: 'Inter', sans-serif !important;
+        }
+
+        /* Ensure MultiChoice widgets respect container width across all browsers */
+        .bk-input.bk-input-group {
+            box-sizing: border-box !important;
+            max-width: 100% !important;
+            width: 100% !important;
+        }
+
+        /* Ensure MultiChoice input fields don't overflow */
+        .bk-input.bk-input-group input {
+            box-sizing: border-box !important;
+            max-width: 100% !important;
         }
         """
     ],
