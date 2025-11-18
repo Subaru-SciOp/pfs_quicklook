@@ -139,9 +139,23 @@ The screenshot shows the interactive individual 1D spectra view in the main pane
 
 ### Selecting Fibers
 
-Before creating individual 1D plots, select which fibers to visualize. You have two methods:
+Before creating individual 1D plots, select which fibers to visualize. You have **three methods**:
 
-#### Method 1: Select by OB Code
+#### Method 1: Select from Target Info Table
+
+The **Target Info** tab displays a table with checkboxes:
+
+1. Switch to the **Target Info** tab
+2. Click checkboxes in the leftmost column to select fibers
+3. **Fiber ID and OB Code widgets automatically update** in sidebar
+4. Use table filtering to find specific fibers:
+   - Filter by OB Code column to show only certain target types
+   - Filter by Fiber Status to exclude broken fibers
+   - Filter by Target Type to show only SCIENCE targets
+
+**Tip**: This is the **fastest method** for selecting multiple specific fibers, especially when combined with table filtering.
+
+#### Method 2: Select by OB Code
 
 **OB Code** (Observation Code) identifies the type of observation or target:
 
@@ -155,10 +169,9 @@ Common examples:
 
 1. Click the **OB Code** dropdown in Fiber Selection section
 2. Select one or more OB codes from the list
-3. **Fiber IDs automatically populate** with corresponding fibers
-4. See bidirectional synchronization (below)
+3. **Fiber IDs and table checkboxes automatically update**
 
-#### Method 2: Select by Fiber ID
+#### Method 3: Select by Fiber ID
 
 **Fiber ID** ranges from 1 to 2604.
 
@@ -166,28 +179,29 @@ Common examples:
 
 1. Click the **Fiber ID** dropdown in Fiber Selection section
 2. Select one or more fiber IDs from the list (can search by typing)
-3. **OB Codes automatically populate** with corresponding codes
-4. See bidirectional synchronization (below)
+3. **OB Codes and table checkboxes automatically update**
 
-#### Bidirectional Synchronization
+#### Three-way Bidirectional Synchronization
 
-The OB Code and Fiber ID selections are **automatically linked**:
+All three selection methods are **automatically linked**:
 
-- Select OB Code → Fiber IDs auto-populate with matching fibers
-- Select Fiber ID → OB Codes auto-populate with matching codes
-- Add/remove selections in either box → other box updates automatically
-- Manual adjustments allowed: You can add/remove individual items freely
+- Select in **table** → Fiber ID & OB Code widgets update
+- Select **OB Code** → Fiber ID widget & table checkboxes update
+- Select **Fiber ID** → OB Code widget & table checkboxes update
+- Changes in any widget immediately reflect in the other two
+- Manual adjustments allowed: You can add/remove selections freely in any widget
 
-**Example**:
+**Example Workflow**:
 
-1. Select OB Code: `<user defined ob_code>`
-2. Fiber IDs automatically populate with all science fibers
-3. Manually remove a few fiber IDs
-4. OB Code remains `<user defined ob_code>` but with fewer fibers
+1. Filter Target Info table to show only `SCIENCE` targets with `GOOD` status
+2. Check 5 fibers in the table using checkboxes
+3. Fiber ID and OB Code widgets automatically show selected fibers
+4. Manually add 2 more fiber IDs using Fiber ID dropdown
+5. Table checkboxes update to show all 7 selected fibers
 
 ### Creating Individual 1D Plots
 
-1. **Select fibers** using OB Code or Fiber ID (see above)
+1. **Select fibers** using any of the three methods above (table checkboxes, OB Code, or Fiber ID)
 2. Click **"Show 1D Spectra"** button
 3. Wait for processing (~2-5 seconds)
 4. Application automatically switches to the **1D Spectra** tab

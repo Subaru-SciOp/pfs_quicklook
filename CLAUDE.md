@@ -67,7 +67,8 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
 
    - **OB Code** MultiChoice: Populated after data load, max 20 options/10 search results
    - **Fiber ID** MultiChoice: All fiber IDs (1-2604), max 20 options/10 search results
-   - **Bidirectional Linking**: OB Code ↔ Fiber ID automatic synchronization
+   - **Tabulator Table** (in pfsConfig tab): Interactive checkbox selection
+   - **Three-way Bidirectional Linking**: Tabulator ↔ Fiber ID ↔ OB Code automatic synchronization
 
 5. **Plot Controls**
 
@@ -88,7 +89,12 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
   - Visit header: pfsDesignId (hex), RA/Dec boresight, position angle, arms, design name
   - Tabulator widget: Interactive table with 250 rows/page
   - Columns: fiberId, spectrograph, objId, obCode, ra, dec, catId, targetType, fiberStatus, proposalId
+  - **Checkbox Selection**: Select fibers directly from table
+    - Checkboxes in leftmost column for row selection
+    - Selected rows automatically update Fiber ID and OB Code widgets in sidebar
+    - Bidirectional sync: Widget selections also update table checkboxes
   - Column display customization:
+    - Fiber ID: Fixed/frozen column (always visible), center-aligned
     - Spectrograph: center-aligned
     - Catalog ID: right-aligned, no thousand separators
   - Header filtering on all columns except ra/dec
@@ -97,7 +103,7 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
     - SCIENCE+not GOOD: Bold gray text (problematic targets)
     - SKY/FLUXSTD: Gray text
     - Others: Light gray text
-  - Read-only table (sorting and filtering only)
+  - Layout: `fit_columns` for optimal column width distribution
 - **2D Images Tab**: Tabbed layout showing multiple spectrographs with horizontal arm arrangements
   - SM1-4 tabs (one per selected spectrograph)
   - Within each tab: arms arranged horizontally (Blue, Red, NIR, Medium-Red)
@@ -128,12 +134,13 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
    - Enables Show 2D Images / Show 1D Spectra / Show 1D Spectra Image buttons
    - Updates status: "Loaded visit XXXXX: N fibers, M OB codes"
 
-2. **Select Fibers** (Optional):
+2. **Select Fibers** (Optional - Three Methods):
 
-   - Via OB Code: Select OB codes → corresponding Fiber IDs auto-selected
-   - Via Fiber ID: Select Fiber IDs → corresponding OB codes auto-selected
-   - Manual adjustment: Users can add/remove selections freely
-   - Bidirectional sync maintains consistency
+   - **Via Tabulator Table**: Check rows in pfsConfig tab → Fiber IDs and OB Codes auto-selected
+   - **Via OB Code**: Select OB codes in sidebar → Fiber IDs and table rows auto-selected
+   - **Via Fiber ID**: Select Fiber IDs in sidebar → OB codes and table rows auto-selected
+   - Manual adjustment: Users can add/remove selections freely via any method
+   - Three-way bidirectional sync maintains consistency across all widgets
 
 3. **Create Plots**:
    - **Show 2D Images** (`plot_2d_callback`):
@@ -151,14 +158,18 @@ This is a web application for visualizing 2D and 1D spectral data from the PFS (
      - Uses HoloViews for interactive visualization
      - Displays in 1D Image tab (auto-switches)
 
-**Bidirectional Fiber Selection**:
+**Three-way Bidirectional Fiber Selection**:
 
 - `load_visit_data()` creates two mappings:
   - `obcode_to_fibers`: OB Code → List of Fiber IDs
   - `fiber_to_obcode`: Fiber ID → OB Code
-- `on_obcode_change()`: Updates Fiber IDs when OB Code selection changes
-- `on_fiber_change()`: Updates OB Codes when Fiber ID selection changes
+- Creates Tabulator widget with `selectable="checkbox"` for interactive row selection
+- **Three synchronization callbacks**:
+  - `on_tabulator_selection_change()`: Tabulator → Fiber ID & OB Code widgets
+  - `on_obcode_change()`: OB Code → Fiber ID & Tabulator selection
+  - `on_fiber_change()`: Fiber ID → OB Code & Tabulator selection
 - Circular reference prevention via `programmatic_update` flag
+- All three widgets (Tabulator, Fiber ID, OB Code) remain synchronized at all times
 
 #### Data Visualization
 
@@ -330,20 +341,36 @@ pfs_quicklook/
 
 - Clears existing plots from all tabs
 - Loads visit data and populates OB Code options
+- Creates Tabulator widget with checkbox selection (`selectable="checkbox"`)
+- Attaches `on_tabulator_selection_change()` callback to Tabulator
 - Updates session state with pfsConfig and mappings
 - Enables plot buttons
 
+**`on_tabulator_selection_change()`**:
+
+- Updates Fiber ID and OB Code widgets when table rows are checked/unchecked
+- Extracts Fiber IDs from selected rows
+- Maps Fiber IDs to OB Codes using `fiber_to_obcode`
+- Implements three-way synchronization (Tabulator → Fiber ID & OB Code)
+
 **`on_obcode_change()`**:
 
-- Updates Fiber ID selection when OB Code changes
+- Updates Fiber ID widget and Tabulator selection when OB Code changes
 - Uses `obcode_to_fibers` mapping
-- Implements bidirectional synchronization
+- Finds matching rows in Tabulator and updates checkbox selection
+- Implements three-way synchronization (OB Code → Fiber ID & Tabulator)
 
 **`on_fiber_change()`**:
 
-- Updates OB Code selection when Fiber ID changes
+- Updates OB Code widget and Tabulator selection when Fiber ID changes
 - Uses `fiber_to_obcode` mapping
-- Implements bidirectional synchronization
+- Finds matching rows in Tabulator and updates checkbox selection
+- Implements three-way synchronization (Fiber ID → OB Code & Tabulator)
+
+**`clear_selection_callback()`**:
+
+- Clears selections in all three widgets: Tabulator, Fiber ID, and OB Code
+- Uses `programmatic_update` flag to prevent circular updates
 
 **`plot_2d_callback()`**:
 
