@@ -146,7 +146,7 @@ def _ensure_session_cleanup_registered():
 def show_notification_on_next_tick(message, notification_type="info", duration=3000):
     """Show notification with staggered timing to prevent batching race conditions
 
-    Uses Bokeh's add_timeout_callback with a small delay (50ms) to ensure notifications
+    Uses Bokeh's add_timeout_callback with a small delay (75ms) to ensure notifications
     are displayed in separate event loop ticks. This prevents the frontend toast library
     (Notyf) from displacing earlier notifications when multiple notifications are
     triggered simultaneously from different callbacks.
@@ -167,7 +167,7 @@ def show_notification_on_next_tick(message, notification_type="info", duration=3
 
     Notes
     -----
-    - The 50ms delay is imperceptible to users but ensures notifications render separately
+    - The 75ms delay balances responsiveness and reliability for notification stacking
     - This function must be called within a Bokeh server context where pn.state.curdoc
       is available. It will have no effect in standalone contexts.
     - Common race condition: load_data_callback + check_visit_discovery both triggering
@@ -183,9 +183,9 @@ def show_notification_on_next_tick(message, notification_type="info", duration=3
         else:
             pn.state.notifications.info(message, duration=duration)
 
-    # Schedule notification with 50ms delay to prevent batching race conditions
+    # Schedule notification with 75ms delay to prevent batching race conditions
     if pn.state.curdoc is not None:
-        pn.state.curdoc.add_timeout_callback(_show_notification, 50)
+        pn.state.curdoc.add_timeout_callback(_show_notification, 75)
     else:
         # Fallback for non-server contexts (shouldn't happen in production)
         _show_notification()

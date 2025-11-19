@@ -344,10 +344,11 @@ pfs_quicklook/
 
 **`show_notification_on_next_tick(message, notification_type, duration)`**:
 
-- Schedules notification display with 50ms delay using `add_timeout_callback()`
+- Schedules notification display with 75ms delay using `add_timeout_callback()`
 - Prevents batching race conditions where multiple notifications triggered simultaneously
 - Without delay: multiple `add_next_tick_callback()` calls execute in same batch → frontend receives all at once → earlier notifications displaced
 - With delay: notifications arrive in separate event loop ticks → frontend can properly stack them
+- 75ms delay balances responsiveness and reliability for notification stacking
 - Common race condition scenario: `load_data_callback` + `check_visit_discovery` both triggering notifications in same cycle
 - Applied to all notifications that occur after widget state changes
 
