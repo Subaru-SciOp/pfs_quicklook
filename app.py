@@ -144,14 +144,17 @@ def _ensure_session_cleanup_registered():
 
 
 def show_notification_on_next_tick(message, notification_type="info", duration=3000):
-    """Show notification on next Bokeh event loop tick
+    """Show notification with staggered timing to prevent batching race conditions
 
-    Uses Bokeh's add_next_tick_callback to ensure notification is displayed
-    after widget updates have been sent to the browser, avoiding race conditions
-    where notifications are dismissed prematurely due to concurrent widget rendering.
+    Uses Bokeh's add_timeout_callback with a small delay (75ms) to ensure notifications
+    are displayed in separate event loop ticks. This prevents the frontend toast library
+    (Notyf) from displacing earlier notifications when multiple notifications are
+    triggered simultaneously from different callbacks.
 
-    This is the proper solution for notification timing issues, as it uses Bokeh's
-    internal event loop timing rather than arbitrary delays.
+    Without this delay, multiple add_next_tick_callback() calls scheduled in the same
+    event cycle execute synchronously in a single batch, causing the frontend to receive
+    all notifications at once. This results in only the last notification being visible,
+    as earlier ones are immediately displaced.
 
     Parameters
     ----------
@@ -164,8 +167,11 @@ def show_notification_on_next_tick(message, notification_type="info", duration=3
 
     Notes
     -----
-    This function must be called within a Bokeh server context where pn.state.curdoc
-    is available. It will have no effect in standalone contexts.
+    - The 75ms delay balances responsiveness and reliability for notification stacking
+    - This function must be called within a Bokeh server context where pn.state.curdoc
+      is available. It will have no effect in standalone contexts.
+    - Common race condition: load_data_callback + check_visit_discovery both triggering
+      notifications in the same event cycle
     """
     def _show_notification():
         if notification_type == "success":
@@ -177,9 +183,9 @@ def show_notification_on_next_tick(message, notification_type="info", duration=3
         else:
             pn.state.notifications.info(message, duration=duration)
 
-    # Schedule notification for next tick
+    # Schedule notification with 75ms delay to prevent batching race conditions
     if pn.state.curdoc is not None:
-        pn.state.curdoc.add_next_tick_callback(_show_notification)
+        pn.state.curdoc.add_timeout_callback(_show_notification, 75)
     else:
         # Fallback for non-server contexts (shouldn't happen in production)
         _show_notification()
