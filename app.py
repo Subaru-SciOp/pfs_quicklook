@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import threading
+import time
 
 import numpy as np
 import panel as pn
@@ -452,7 +453,6 @@ def load_data_callback(event=None):
     Shows notifications on success or failure.
     Clears existing plots from tabs when loading a new visit.
     """
-    import time
     start_time = time.time()
 
     if not visit_mc.value:
@@ -869,7 +869,6 @@ def plot_2d_callback(event=None):
     Automatically switches to 2D tab after successful plot creation.
     Shows informational notes for missing arms and errors.
     """
-    import time
     start_time = time.time()
 
     state = get_session_state()
@@ -1162,7 +1161,6 @@ def plot_1d_callback(event=None):
     Requires fiber selection (shows warning if none selected).
     Automatically switches to 1D tab after successful plot creation.
     """
-    import time
     start_time = time.time()
 
     state = get_session_state()
@@ -1242,7 +1240,6 @@ def plot_1d_image_callback(event=None):
     Displays all fibers if none selected.
     Automatically switches to 1D Image tab after successful creation.
     """
-    import time
     start_time = time.time()
 
     state = get_session_state()
@@ -1385,7 +1382,6 @@ def discover_visits_worker(
     obsdate_utc : str
         Observation date in UTC (YYYY-MM-DD format)
     """
-    import time
     start_time = time.time()
 
     try:
