@@ -22,7 +22,6 @@ from quicklook_core import (
     create_holoviews_from_arrays,
     create_pfsconfig_dataframe,
     discover_visits,
-    get_butler_cached,
     load_visit_data,
     reload_config,
 )
@@ -174,6 +173,7 @@ def show_notification_on_next_tick(message, notification_type="info", duration=3
     - Common race condition: load_data_callback + check_visit_discovery both triggering
       notifications in the same event cycle
     """
+
     def _show_notification():
         if notification_type == "success":
             pn.state.notifications.success(message, duration=duration)
@@ -532,7 +532,9 @@ def load_data_callback(event=None):
 
         # Configure column-specific settings
         # Note: Explicitly list all columns to ensure fiberId is visible with selectable="checkbox"
-        logger.info(f"DataFrame columns before Tabulator: {df_pfsconfig.columns.tolist()}")
+        logger.info(
+            f"DataFrame columns before Tabulator: {df_pfsconfig.columns.tolist()}"
+        )
 
         tabulator = pn.widgets.Tabulator(
             df_pfsconfig,
@@ -551,7 +553,11 @@ def load_data_callback(event=None):
                 "objId": 200,
                 "obCode": 300,
             },
-            text_align={"fiberId": "center", "spectrograph": "center", "catId": "right"},
+            text_align={
+                "fiberId": "center",
+                "spectrograph": "center",
+                "catId": "right",
+            },
             formatters={
                 "catId": NumberFormatter(format="0"),
             },
@@ -569,13 +575,29 @@ def load_data_callback(event=None):
             },
             header_filters={
                 "fiberId": {"type": "input", "func": "like", "placeholder": "Filter"},
-                "spectrograph": {"type": "input", "func": "like", "placeholder": "Filter"},
+                "spectrograph": {
+                    "type": "input",
+                    "func": "like",
+                    "placeholder": "Filter",
+                },
                 "objId": {"type": "input", "func": "like", "placeholder": "Filter"},
                 "obCode": {"type": "input", "func": "like", "placeholder": "Filter"},
                 "catId": {"type": "input", "func": "like", "placeholder": "Filter"},
-                "targetType": {"type": "input", "func": "like", "placeholder": "Filter"},
-                "fiberStatus": {"type": "input", "func": "like", "placeholder": "Filter"},
-                "proposalId": {"type": "input", "func": "like", "placeholder": "Filter"},
+                "targetType": {
+                    "type": "input",
+                    "func": "like",
+                    "placeholder": "Filter",
+                },
+                "fiberStatus": {
+                    "type": "input",
+                    "func": "like",
+                    "placeholder": "Filter",
+                },
+                "proposalId": {
+                    "type": "input",
+                    "func": "like",
+                    "placeholder": "Filter",
+                },
             },
         )
 
@@ -622,7 +644,9 @@ def load_data_callback(event=None):
             fibers_mc.value = selected_fiber_ids
             obcode_mc.value = sorted(obcodes)
             state["programmatic_update"] = False
-            logger.info(f"Tabulator selection changed: {len(selected_fiber_ids)} fibers, {len(obcodes)} OB codes selected")
+            logger.info(
+                f"Tabulator selection changed: {len(selected_fiber_ids)} fibers, {len(obcodes)} OB codes selected"
+            )
 
         tabulator.param.watch(on_tabulator_selection_change, "selection")
 
@@ -662,7 +686,7 @@ def load_data_callback(event=None):
         show_notification_on_next_tick(
             f"Visit {visit} loaded successfully",
             notification_type="success",
-            duration=2000
+            duration=2000,
         )
 
         # Log execution time
@@ -745,13 +769,17 @@ def on_obcode_change(event):
     # So objects[1] is the tabulator widget
     if len(pane_pfsconfig.objects) == 2:
         tabulator = pane_pfsconfig.objects[1]
-        if hasattr(tabulator, 'value') and tabulator.value is not None:
+        if hasattr(tabulator, "value") and tabulator.value is not None:
             # Find row indices that match selected fiber IDs
             df = tabulator.value
-            if 'fiberId' in df.columns:
-                selected_indices = df.index[df['fiberId'].isin(unique_fiber_ids)].tolist()
+            if "fiberId" in df.columns:
+                selected_indices = df.index[
+                    df["fiberId"].isin(unique_fiber_ids)
+                ].tolist()
                 tabulator.selection = selected_indices
-                logger.debug(f"Updated tabulator selection: {len(selected_indices)} rows")
+                logger.debug(
+                    f"Updated tabulator selection: {len(selected_indices)} rows"
+                )
 
     state["programmatic_update"] = False
 
@@ -800,13 +828,17 @@ def on_fiber_change(event):
     # So objects[1] is the tabulator widget
     if len(pane_pfsconfig.objects) == 2:
         tabulator = pane_pfsconfig.objects[1]
-        if hasattr(tabulator, 'value') and tabulator.value is not None:
+        if hasattr(tabulator, "value") and tabulator.value is not None:
             # Find row indices that match selected fiber IDs
             df = tabulator.value
-            if 'fiberId' in df.columns:
-                selected_indices = df.index[df['fiberId'].isin(selected_fibers)].tolist()
+            if "fiberId" in df.columns:
+                selected_indices = df.index[
+                    df["fiberId"].isin(selected_fibers)
+                ].tolist()
                 tabulator.selection = selected_indices
-                logger.debug(f"Updated tabulator selection: {len(selected_indices)} rows")
+                logger.debug(
+                    f"Updated tabulator selection: {len(selected_indices)} rows"
+                )
 
     state["programmatic_update"] = False
 
@@ -841,7 +873,7 @@ def clear_selection_callback(event=None):
     # So objects[1] is the tabulator widget
     if len(pane_pfsconfig.objects) == 2:
         tabulator = pane_pfsconfig.objects[1]
-        if hasattr(tabulator, 'selection'):
+        if hasattr(tabulator, "selection"):
             tabulator.selection = []
             logger.debug("Cleared tabulator selection")
 
@@ -1417,9 +1449,7 @@ def discover_visits_worker(
 
     except Exception as e:
         elapsed_time = time.time() - start_time
-        logger.error(
-            f"Visit discovery failed after {elapsed_time:.2f} seconds: {e}"
-        )
+        logger.error(f"Visit discovery failed after {elapsed_time:.2f} seconds: {e}")
         state_dict["status"] = "error"
         state_dict["error"] = str(e)
 
@@ -1463,16 +1493,14 @@ def check_visit_discovery():
         # Show notification on next tick to avoid race condition with widget updates
         if old_count == 0:
             show_notification_on_next_tick(
-                f"Found {new_count} visits",
-                notification_type="success",
-                duration=2000
+                f"Found {new_count} visits", notification_type="success", duration=2000
             )
             logger.info(f"Initial visit discovery: {new_count} visits")
         elif new_count > old_count:
             show_notification_on_next_tick(
                 f"Found {new_count - old_count} new visit(s) (total: {new_count})",
                 notification_type="success",
-                duration=2000
+                duration=2000,
             )
             logger.info(
                 f"Visit list updated: +{new_count - old_count} visits (total: {new_count})"
@@ -1499,7 +1527,7 @@ def check_visit_discovery():
         show_notification_on_next_tick(
             "No visits found for the specified date",
             notification_type="warning",
-            duration=3000
+            duration=3000,
         )
 
         state.update({"status": None, "updated_cache": None})
@@ -1513,7 +1541,7 @@ def check_visit_discovery():
         show_notification_on_next_tick(
             f"Failed to discover visits: {state['error']}",
             notification_type="error",
-            duration=5000
+            duration=5000,
         )
 
         state.update({"status": None, "error": None})
@@ -1593,9 +1621,7 @@ def on_session_created():
 
     # Show notification on next tick to avoid race condition with widget updates
     show_notification_on_next_tick(
-        "Configuration reloaded from .env file",
-        notification_type="info",
-        duration=3000
+        "Configuration reloaded from .env file", notification_type="info", duration=3000
     )
 
     # Reset visit widget to loading state
