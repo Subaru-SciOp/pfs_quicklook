@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import threading
+import time
 
 import numpy as np
 import panel as pn
@@ -21,7 +22,6 @@ from quicklook_core import (
     create_holoviews_from_arrays,
     create_pfsconfig_dataframe,
     discover_visits,
-    get_butler_cached,
     load_visit_data,
     reload_config,
 )
@@ -173,6 +173,7 @@ def show_notification_on_next_tick(message, notification_type="info", duration=3
     - Common race condition: load_data_callback + check_visit_discovery both triggering
       notifications in the same event cycle
     """
+
     def _show_notification():
         if notification_type == "success":
             pn.state.notifications.success(message, duration=duration)
@@ -452,6 +453,8 @@ def load_data_callback(event=None):
     Shows notifications on success or failure.
     Clears existing plots from tabs when loading a new visit.
     """
+    start_time = time.time()
+
     if not visit_mc.value:
         pn.state.notifications.warning("Select at least one visit.", duration=3000)
         logger.warning("No visit selected.")
@@ -483,12 +486,15 @@ def load_data_callback(event=None):
                 f"Visit {visit}: Data reduction appears incomplete (pfsMerged not found)"
             )
 
+        # Get butler_cache from session state
+        state = get_session_state()
+        butler_cache = state.get("butler_cache", {})
+
         pfsConfig, obcode_to_fibers, fiber_to_obcode = load_visit_data(
-            datastore, base_collection, visit
+            datastore, base_collection, visit, butler_cache
         )
 
-        # Update session state
-        state = get_session_state()
+        # Update session state (butler_cache already updated by get_butler_cached)
         state["visit_data"] = {
             "loaded": True,
             "visit": visit,
@@ -526,7 +532,9 @@ def load_data_callback(event=None):
 
         # Configure column-specific settings
         # Note: Explicitly list all columns to ensure fiberId is visible with selectable="checkbox"
-        logger.info(f"DataFrame columns before Tabulator: {df_pfsconfig.columns.tolist()}")
+        logger.info(
+            f"DataFrame columns before Tabulator: {df_pfsconfig.columns.tolist()}"
+        )
 
         tabulator = pn.widgets.Tabulator(
             df_pfsconfig,
@@ -545,7 +553,11 @@ def load_data_callback(event=None):
                 "objId": 200,
                 "obCode": 300,
             },
-            text_align={"fiberId": "center", "spectrograph": "center", "catId": "right"},
+            text_align={
+                "fiberId": "center",
+                "spectrograph": "center",
+                "catId": "right",
+            },
             formatters={
                 "catId": NumberFormatter(format="0"),
             },
@@ -563,13 +575,29 @@ def load_data_callback(event=None):
             },
             header_filters={
                 "fiberId": {"type": "input", "func": "like", "placeholder": "Filter"},
-                "spectrograph": {"type": "input", "func": "like", "placeholder": "Filter"},
+                "spectrograph": {
+                    "type": "input",
+                    "func": "like",
+                    "placeholder": "Filter",
+                },
                 "objId": {"type": "input", "func": "like", "placeholder": "Filter"},
                 "obCode": {"type": "input", "func": "like", "placeholder": "Filter"},
                 "catId": {"type": "input", "func": "like", "placeholder": "Filter"},
-                "targetType": {"type": "input", "func": "like", "placeholder": "Filter"},
-                "fiberStatus": {"type": "input", "func": "like", "placeholder": "Filter"},
-                "proposalId": {"type": "input", "func": "like", "placeholder": "Filter"},
+                "targetType": {
+                    "type": "input",
+                    "func": "like",
+                    "placeholder": "Filter",
+                },
+                "fiberStatus": {
+                    "type": "input",
+                    "func": "like",
+                    "placeholder": "Filter",
+                },
+                "proposalId": {
+                    "type": "input",
+                    "func": "like",
+                    "placeholder": "Filter",
+                },
             },
         )
 
@@ -616,7 +644,9 @@ def load_data_callback(event=None):
             fibers_mc.value = selected_fiber_ids
             obcode_mc.value = sorted(obcodes)
             state["programmatic_update"] = False
-            logger.info(f"Tabulator selection changed: {len(selected_fiber_ids)} fibers, {len(obcodes)} OB codes selected")
+            logger.info(
+                f"Tabulator selection changed: {len(selected_fiber_ids)} fibers, {len(obcodes)} OB codes selected"
+            )
 
         tabulator.param.watch(on_tabulator_selection_change, "selection")
 
@@ -656,8 +686,12 @@ def load_data_callback(event=None):
         show_notification_on_next_tick(
             f"Visit {visit} loaded successfully",
             notification_type="success",
-            duration=2000
+            duration=2000,
         )
+
+        # Log execution time
+        elapsed_time = time.time() - start_time
+        logger.info(f"Load Visit completed in {elapsed_time:.2f} seconds")
 
         log_md.object = f"""**Data loaded**
 - visit: {visit}
@@ -666,8 +700,9 @@ def load_data_callback(event=None):
 """
 
     except Exception as e:
+        elapsed_time = time.time() - start_time
         pn.state.notifications.error(f"Failed to load visit data: {e}", duration=5000)
-        logger.error(f"Failed to load visit data: {e}")
+        logger.error(f"Load Visit failed after {elapsed_time:.2f} seconds: {e}")
         status_text.object = "**Error loading data**"
         # On error, disable plot buttons
         btn_plot_2d.disabled = True
@@ -734,13 +769,17 @@ def on_obcode_change(event):
     # So objects[1] is the tabulator widget
     if len(pane_pfsconfig.objects) == 2:
         tabulator = pane_pfsconfig.objects[1]
-        if hasattr(tabulator, 'value') and tabulator.value is not None:
+        if hasattr(tabulator, "value") and tabulator.value is not None:
             # Find row indices that match selected fiber IDs
             df = tabulator.value
-            if 'fiberId' in df.columns:
-                selected_indices = df.index[df['fiberId'].isin(unique_fiber_ids)].tolist()
+            if "fiberId" in df.columns:
+                selected_indices = df.index[
+                    df["fiberId"].isin(unique_fiber_ids)
+                ].tolist()
                 tabulator.selection = selected_indices
-                logger.debug(f"Updated tabulator selection: {len(selected_indices)} rows")
+                logger.debug(
+                    f"Updated tabulator selection: {len(selected_indices)} rows"
+                )
 
     state["programmatic_update"] = False
 
@@ -789,13 +828,17 @@ def on_fiber_change(event):
     # So objects[1] is the tabulator widget
     if len(pane_pfsconfig.objects) == 2:
         tabulator = pane_pfsconfig.objects[1]
-        if hasattr(tabulator, 'value') and tabulator.value is not None:
+        if hasattr(tabulator, "value") and tabulator.value is not None:
             # Find row indices that match selected fiber IDs
             df = tabulator.value
-            if 'fiberId' in df.columns:
-                selected_indices = df.index[df['fiberId'].isin(selected_fibers)].tolist()
+            if "fiberId" in df.columns:
+                selected_indices = df.index[
+                    df["fiberId"].isin(selected_fibers)
+                ].tolist()
                 tabulator.selection = selected_indices
-                logger.debug(f"Updated tabulator selection: {len(selected_indices)} rows")
+                logger.debug(
+                    f"Updated tabulator selection: {len(selected_indices)} rows"
+                )
 
     state["programmatic_update"] = False
 
@@ -830,7 +873,7 @@ def clear_selection_callback(event=None):
     # So objects[1] is the tabulator widget
     if len(pane_pfsconfig.objects) == 2:
         tabulator = pane_pfsconfig.objects[1]
-        if hasattr(tabulator, 'selection'):
+        if hasattr(tabulator, "selection"):
             tabulator.selection = []
             logger.debug("Cleared tabulator selection")
 
@@ -858,6 +901,8 @@ def plot_2d_callback(event=None):
     Automatically switches to 2D tab after successful plot creation.
     Shows informational notes for missing arms and errors.
     """
+    start_time = time.time()
+
     state = get_session_state()
 
     if not state["visit_data"]["loaded"]:
@@ -879,11 +924,6 @@ def plot_2d_callback(event=None):
         logger.warning("pfsConfig not found in session state, will be loaded per-arm")
     else:
         logger.info("Using pre-loaded pfsConfig from session state (optimization)")
-
-    # Get Butler cache from session state for Butler instance reuse
-    # This avoids repeated Butler creation (saves ~0.1-0.2s per arm × 16 arms = ~1.6-3.2s)
-    butler_cache = state["butler_cache"]
-    logger.info("Using Butler cache from session state (optimization)")
 
     spectro_selection = (
         spectro_cbg.value
@@ -946,7 +986,6 @@ def plot_2d_callback(event=None):
                 scale_algo=scale_algo,
                 n_jobs=16,
                 pfsConfig_preloaded=pfs_config_shared,
-                butler_cache=butler_cache,
             )
         except Exception as e:
             logger.error(f"Failed to build 2D arrays: {e}")
@@ -1132,6 +1171,10 @@ def plot_2d_callback(event=None):
         hide_loading_spinner()
         toggle_buttons(disabled=False, include_load=True)
 
+        # Log execution time
+        elapsed_time = time.time() - start_time
+        logger.info(f"Show 2D Images completed in {elapsed_time:.2f} seconds")
+
 
 def plot_1d_callback(event=None):
     """Create 1D plot using Bokeh
@@ -1150,6 +1193,8 @@ def plot_1d_callback(event=None):
     Requires fiber selection (shows warning if none selected).
     Automatically switches to 1D tab after successful plot creation.
     """
+    start_time = time.time()
+
     state = get_session_state()
 
     if not state["visit_data"]["loaded"]:
@@ -1206,6 +1251,10 @@ def plot_1d_callback(event=None):
         hide_loading_spinner()
         toggle_buttons(disabled=False, include_load=True)
 
+        # Log execution time
+        elapsed_time = time.time() - start_time
+        logger.info(f"Show 1D Spectra completed in {elapsed_time:.2f} seconds")
+
 
 def plot_1d_image_callback(event=None):
     """Create 2D representation of all 1D spectra
@@ -1223,6 +1272,8 @@ def plot_1d_image_callback(event=None):
     Displays all fibers if none selected.
     Automatically switches to 1D Image tab after successful creation.
     """
+    start_time = time.time()
+
     state = get_session_state()
 
     if not state["visit_data"]["loaded"]:
@@ -1279,6 +1330,10 @@ def plot_1d_image_callback(event=None):
         # Hide loading spinner and re-enable buttons after processing
         hide_loading_spinner()
         toggle_buttons(disabled=False, include_load=True)
+
+        # Log execution time
+        elapsed_time = time.time() - start_time
+        logger.info(f"Show 1D Spectra Image completed in {elapsed_time:.2f} seconds")
 
 
 def reset_app(event=None):
@@ -1359,6 +1414,8 @@ def discover_visits_worker(
     obsdate_utc : str
         Observation date in UTC (YYYY-MM-DD format)
     """
+    start_time = time.time()
+
     try:
         logger.info(f"Starting visit discovery for date: {obsdate_utc}")
         state_dict["status"] = "running"
@@ -1371,19 +1428,28 @@ def discover_visits_worker(
             cached_visits=visit_cache,
         )
 
+        elapsed_time = time.time() - start_time
+
         # Store results
         if discovered_visits:
             state_dict["status"] = "success"
             state_dict["result"] = discovered_visits
             state_dict["updated_cache"] = updated_cache
-            logger.info(f"Loaded {len(discovered_visits)} visits")
+            logger.info(
+                f"Visit discovery completed in {elapsed_time:.2f} seconds: "
+                f"Loaded {len(discovered_visits)} visits"
+            )
         else:
             state_dict["status"] = "no_data"
             state_dict["updated_cache"] = updated_cache
-            logger.warning("No visits discovered. Visit list will be empty.")
+            logger.warning(
+                f"Visit discovery completed in {elapsed_time:.2f} seconds: "
+                f"No visits discovered. Visit list will be empty."
+            )
 
     except Exception as e:
-        logger.error(f"Error during visit discovery: {e}")
+        elapsed_time = time.time() - start_time
+        logger.error(f"Visit discovery failed after {elapsed_time:.2f} seconds: {e}")
         state_dict["status"] = "error"
         state_dict["error"] = str(e)
 
@@ -1427,16 +1493,14 @@ def check_visit_discovery():
         # Show notification on next tick to avoid race condition with widget updates
         if old_count == 0:
             show_notification_on_next_tick(
-                f"Found {new_count} visits",
-                notification_type="success",
-                duration=2000
+                f"Found {new_count} visits", notification_type="success", duration=2000
             )
             logger.info(f"Initial visit discovery: {new_count} visits")
         elif new_count > old_count:
             show_notification_on_next_tick(
                 f"Found {new_count - old_count} new visit(s) (total: {new_count})",
                 notification_type="success",
-                duration=2000
+                duration=2000,
             )
             logger.info(
                 f"Visit list updated: +{new_count - old_count} visits (total: {new_count})"
@@ -1463,7 +1527,7 @@ def check_visit_discovery():
         show_notification_on_next_tick(
             "No visits found for the specified date",
             notification_type="warning",
-            duration=3000
+            duration=3000,
         )
 
         state.update({"status": None, "updated_cache": None})
@@ -1477,7 +1541,7 @@ def check_visit_discovery():
         show_notification_on_next_tick(
             f"Failed to discover visits: {state['error']}",
             notification_type="error",
-            duration=5000
+            duration=5000,
         )
 
         state.update({"status": None, "error": None})
@@ -1557,9 +1621,7 @@ def on_session_created():
 
     # Show notification on next tick to avoid race condition with widget updates
     show_notification_on_next_tick(
-        "Configuration reloaded from .env file",
-        notification_type="info",
-        duration=3000
+        "Configuration reloaded from .env file", notification_type="info", duration=3000
     )
 
     # Reset visit widget to loading state

@@ -3,6 +3,7 @@
 
 import os
 import sys
+import traceback
 from datetime import datetime, timezone
 
 import holoviews as hv
@@ -14,7 +15,8 @@ from astropy.visualization import (
     MinMaxInterval,
     ZScaleInterval,
 )
-from bokeh.models import HoverTool, Legend
+from bokeh.models import Band, ColumnDataSource, HoverTool, Legend, LegendItem
+from bokeh.palettes import Category10_10
 from bokeh.plotting import figure as bokeh_figure
 from dotenv import load_dotenv
 from joblib import Parallel, delayed
@@ -34,7 +36,7 @@ hv.extension("bokeh")
 # Canvas renderer is more compatible across all browsers, especially with VPN
 # TODO: Monitor Bokeh/HoloViews/Firefox updates for WebGL compatibility improvements
 #       and consider re-enabling WebGL in the future for better performance
-hv.renderer('bokeh').webgl = False
+hv.renderer("bokeh").webgl = False
 logger.info("HoloViews: WebGL disabled for cross-browser compatibility (Firefox/VPN)")
 
 # --- LSST/PFS imports ---
@@ -87,7 +89,9 @@ def parse_obsdate_utc(env_value):
         return today
 
     if env_value.strip().upper() == "TODAY":
-        logger.info(f"PFS_OBSDATE_UTC='TODAY' keyword detected, using today's date: {today}")
+        logger.info(
+            f"PFS_OBSDATE_UTC='TODAY' keyword detected, using today's date: {today}"
+        )
         return today
 
     return env_value.strip()
@@ -409,12 +413,10 @@ def discover_visits(
             )
             results = Parallel(
                 n_jobs=min(32, len(new_visits)),
-                backend='threading',  # Use threading instead of multiprocessing for I/O operations
+                backend="threading",  # Use threading instead of multiprocessing for I/O operations
                 verbose=1,
                 timeout=300,  # 5-minute timeout to handle filesystem I/O delays
-            )(
-                delayed(check_visit_date)(visit) for visit in new_visits
-            )
+            )(delayed(check_visit_date)(visit) for visit in new_visits)
 
             # Update cache and collect valid visits
             for visit, date in results:
@@ -448,7 +450,9 @@ def discover_visits(
         return [], cached_visits
 
 
-def load_visit_data(datastore: str, base_collection: str, visit: int):
+def load_visit_data(
+    datastore: str, base_collection: str, visit: int, butler_cache: dict | None = None
+):
     """Load visit data and create bidirectional mapping between OB Code and Fiber ID
 
     Parameters
@@ -459,6 +463,10 @@ def load_visit_data(datastore: str, base_collection: str, visit: int):
         Base collection name
     visit : int
         Visit number
+    butler_cache : dict, optional
+        Dictionary for caching Butler instances. Key format: (datastore, collection, visit).
+        If None, no caching is performed.
+        Default is None.
 
     Returns
     -------
@@ -469,7 +477,7 @@ def load_visit_data(datastore: str, base_collection: str, visit: int):
     fiber_to_obcode_dict : dict
         Mapping from fiber IDs to OB codes
     """
-    b = get_butler(datastore, base_collection, visit)
+    b = get_butler_cached(datastore, base_collection, visit, butler_cache)
     pfsConfig = b.get("pfsConfig", visit=visit)
 
     # Create bidirectional mappings
@@ -542,9 +550,7 @@ def check_pfsmerged_exists(datastore: str, base_collection: str, visit: int):
         return True
 
     except Exception as e:
-        logger.warning(
-            f"Visit {visit}: Failed to check pfsMerged existence: {e}"
-        )
+        logger.warning(f"Visit {visit}: Failed to check pfsMerged existence: {e}")
         return False
 
 
@@ -780,7 +786,6 @@ def _build_single_2d_array(
     fiber_ids=None,
     scale_algo: str = "zscale",
     pfsConfig_preloaded=None,
-    butler_cache=None,
 ):
     """Build transformed numpy array for a single arm/spectrograph combination
 
@@ -811,10 +816,6 @@ def _build_single_2d_array(
         Pre-loaded pfsConfig object to avoid redundant Butler.get() calls.
         If provided, skips loading pfsConfig from Butler (saves ~0.177s per arm).
         Default is None (load from Butler).
-    butler_cache : dict, optional
-        Dictionary for caching Butler instances. Passed to get_butler_cached().
-        If provided, enables Butler instance reuse (saves ~0.1-0.2s per arm).
-        Default is None (no caching).
 
     Returns
     -------
@@ -828,8 +829,9 @@ def _build_single_2d_array(
         Error message if failed, None on success
     """
     try:
-        # Use cached Butler if available (optimization to avoid repeated Butler creation)
-        b = get_butler_cached(datastore, base_collection, visit, butler_cache)
+        # Create new Butler instance for each thread to avoid database connection sharing
+        # Butler's database connection (SQLAlchemy/PostgreSQL) is not thread-safe
+        b = get_butler(datastore, base_collection, visit)
         data_id = make_data_id(visit, spectrograph, arm)
 
         # data retrieval
@@ -931,7 +933,6 @@ def _run_arm_jobs(
     scale_algo: str,
     n_jobs: int,
     pfsConfig_preloaded=None,
-    butler_cache=None,
 ):
     """Execute a list of (spectrograph, arm) jobs in parallel and group results.
 
@@ -944,9 +945,7 @@ def _run_arm_jobs(
         return {}
 
     logger.info(
-        "Building 2D arrays for %d task(s) with unified parallel processing (n_jobs=%s)",
-        len(tasks),
-        n_jobs,
+        f"Building 2D arrays for {len(tasks)} task(s) with unified parallel processing (n_jobs={n_jobs})"
     )
 
     def _execute(task):
@@ -962,7 +961,6 @@ def _run_arm_jobs(
             fiber_ids,
             scale_algo,
             pfsConfig_preloaded,
-            butler_cache,
         )
         return spectrograph, arm_name, array, metadata, err
 
@@ -989,7 +987,6 @@ def build_2d_arrays_multi_spectrograph(
     scale_algo: str = "zscale",
     n_jobs: int = 16,
     pfsConfig_preloaded=None,
-    butler_cache=None,
 ):
     """Build arrays for every (spectrograph, arm) pair using a single Parallel call."""
 
@@ -1010,7 +1007,6 @@ def build_2d_arrays_multi_spectrograph(
         scale_algo,
         n_jobs,
         pfsConfig_preloaded,
-        butler_cache,
     )
 
     arm_order = {arm: idx for idx, arm in enumerate(arms)}
@@ -1397,9 +1393,6 @@ def build_1d_bokeh_figure_single_visit(
     bokeh.plotting.figure
         Bokeh figure object with configured plot
     """
-    from bokeh.models import Band, ColumnDataSource
-    from bokeh.palettes import Category10_10
-
     b = get_butler(datastore, base_collection, visit)
     pfsConfig = b.get("pfsConfig", visit=visit)
     pfsMerged = b.get("pfsMerged", visit=visit)
@@ -1462,7 +1455,9 @@ def build_1d_bokeh_figure_single_visit(
 
             # pfsConfigから該当fiberの情報を取得
             pfs_sel = pfsConfig.select(fiberId=fid)
-            obj_id = str(pfs_sel.objId[0])  # Convert to string to avoid JavaScript integer overflow
+            obj_id = str(
+                pfs_sel.objId[0]
+            )  # Convert to string to avoid JavaScript integer overflow
             ob_code = pfs_sel.obCode[0]
 
             color = colors[i % len(colors)]
@@ -1523,8 +1518,6 @@ def build_1d_bokeh_figure_single_visit(
                     band_renderer.muted = is_muted
 
             # legend itemに追加
-            from bokeh.models import LegendItem
-
             legend_items.append(LegendItem(label=f"fid={fid}", renderers=[line]))
 
         # Add zero line
@@ -1760,8 +1753,6 @@ def build_1d_spectra_as_image(
     except Exception as e:
         error_msg = str(e)
         logger.error(f"Failed to create 1D spectra image: {error_msg}")
-        import traceback
-
         logger.error(f"Traceback: {traceback.format_exc()}")
 
         # Create simple error placeholder
