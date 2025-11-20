@@ -962,7 +962,7 @@ def _run_arm_jobs(
         )
         return spectrograph, arm_name, array, metadata, err
 
-    raw_results = Parallel(n_jobs=n_jobs, backend='threading', verbose=10)(
+    raw_results = Parallel(n_jobs=n_jobs, verbose=10)(
         delayed(_execute)(task) for task in tasks
     )
 
