@@ -452,6 +452,9 @@ def load_data_callback(event=None):
     Shows notifications on success or failure.
     Clears existing plots from tabs when loading a new visit.
     """
+    import time
+    start_time = time.time()
+
     if not visit_mc.value:
         pn.state.notifications.warning("Select at least one visit.", duration=3000)
         logger.warning("No visit selected.")
@@ -662,6 +665,10 @@ def load_data_callback(event=None):
             duration=2000
         )
 
+        # Log execution time
+        elapsed_time = time.time() - start_time
+        logger.info(f"Load Visit completed in {elapsed_time:.2f} seconds")
+
         log_md.object = f"""**Data loaded**
 - visit: {visit}
 - total fibers: {num_fibers}
@@ -669,8 +676,9 @@ def load_data_callback(event=None):
 """
 
     except Exception as e:
+        elapsed_time = time.time() - start_time
         pn.state.notifications.error(f"Failed to load visit data: {e}", duration=5000)
-        logger.error(f"Failed to load visit data: {e}")
+        logger.error(f"Load Visit failed after {elapsed_time:.2f} seconds: {e}")
         status_text.object = "**Error loading data**"
         # On error, disable plot buttons
         btn_plot_2d.disabled = True
@@ -861,6 +869,9 @@ def plot_2d_callback(event=None):
     Automatically switches to 2D tab after successful plot creation.
     Shows informational notes for missing arms and errors.
     """
+    import time
+    start_time = time.time()
+
     state = get_session_state()
 
     if not state["visit_data"]["loaded"]:
@@ -1129,6 +1140,10 @@ def plot_2d_callback(event=None):
         hide_loading_spinner()
         toggle_buttons(disabled=False, include_load=True)
 
+        # Log execution time
+        elapsed_time = time.time() - start_time
+        logger.info(f"Show 2D Images completed in {elapsed_time:.2f} seconds")
+
 
 def plot_1d_callback(event=None):
     """Create 1D plot using Bokeh
@@ -1147,6 +1162,9 @@ def plot_1d_callback(event=None):
     Requires fiber selection (shows warning if none selected).
     Automatically switches to 1D tab after successful plot creation.
     """
+    import time
+    start_time = time.time()
+
     state = get_session_state()
 
     if not state["visit_data"]["loaded"]:
@@ -1203,6 +1221,10 @@ def plot_1d_callback(event=None):
         hide_loading_spinner()
         toggle_buttons(disabled=False, include_load=True)
 
+        # Log execution time
+        elapsed_time = time.time() - start_time
+        logger.info(f"Show 1D Spectra completed in {elapsed_time:.2f} seconds")
+
 
 def plot_1d_image_callback(event=None):
     """Create 2D representation of all 1D spectra
@@ -1220,6 +1242,9 @@ def plot_1d_image_callback(event=None):
     Displays all fibers if none selected.
     Automatically switches to 1D Image tab after successful creation.
     """
+    import time
+    start_time = time.time()
+
     state = get_session_state()
 
     if not state["visit_data"]["loaded"]:
@@ -1276,6 +1301,10 @@ def plot_1d_image_callback(event=None):
         # Hide loading spinner and re-enable buttons after processing
         hide_loading_spinner()
         toggle_buttons(disabled=False, include_load=True)
+
+        # Log execution time
+        elapsed_time = time.time() - start_time
+        logger.info(f"Show 1D Spectra Image completed in {elapsed_time:.2f} seconds")
 
 
 def reset_app(event=None):
@@ -1356,6 +1385,9 @@ def discover_visits_worker(
     obsdate_utc : str
         Observation date in UTC (YYYY-MM-DD format)
     """
+    import time
+    start_time = time.time()
+
     try:
         logger.info(f"Starting visit discovery for date: {obsdate_utc}")
         state_dict["status"] = "running"
@@ -1368,19 +1400,30 @@ def discover_visits_worker(
             cached_visits=visit_cache,
         )
 
+        elapsed_time = time.time() - start_time
+
         # Store results
         if discovered_visits:
             state_dict["status"] = "success"
             state_dict["result"] = discovered_visits
             state_dict["updated_cache"] = updated_cache
-            logger.info(f"Loaded {len(discovered_visits)} visits")
+            logger.info(
+                f"Visit discovery completed in {elapsed_time:.2f} seconds: "
+                f"Loaded {len(discovered_visits)} visits"
+            )
         else:
             state_dict["status"] = "no_data"
             state_dict["updated_cache"] = updated_cache
-            logger.warning("No visits discovered. Visit list will be empty.")
+            logger.warning(
+                f"Visit discovery completed in {elapsed_time:.2f} seconds: "
+                f"No visits discovered. Visit list will be empty."
+            )
 
     except Exception as e:
-        logger.error(f"Error during visit discovery: {e}")
+        elapsed_time = time.time() - start_time
+        logger.error(
+            f"Visit discovery failed after {elapsed_time:.2f} seconds: {e}"
+        )
         state_dict["status"] = "error"
         state_dict["error"] = str(e)
 
