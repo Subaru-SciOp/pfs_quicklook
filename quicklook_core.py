@@ -448,7 +448,7 @@ def discover_visits(
         return [], cached_visits
 
 
-def load_visit_data(datastore: str, base_collection: str, visit: int):
+def load_visit_data(datastore: str, base_collection: str, visit: int, butler_cache: dict | None = None):
     """Load visit data and create bidirectional mapping between OB Code and Fiber ID
 
     Parameters
@@ -459,6 +459,10 @@ def load_visit_data(datastore: str, base_collection: str, visit: int):
         Base collection name
     visit : int
         Visit number
+    butler_cache : dict, optional
+        Dictionary for caching Butler instances. Key format: (datastore, collection, visit).
+        If None, no caching is performed.
+        Default is None.
 
     Returns
     -------
@@ -469,7 +473,7 @@ def load_visit_data(datastore: str, base_collection: str, visit: int):
     fiber_to_obcode_dict : dict
         Mapping from fiber IDs to OB codes
     """
-    b = get_butler(datastore, base_collection, visit)
+    b = get_butler_cached(datastore, base_collection, visit, butler_cache)
     pfsConfig = b.get("pfsConfig", visit=visit)
 
     # Create bidirectional mappings
@@ -966,7 +970,7 @@ def _run_arm_jobs(
         )
         return spectrograph, arm_name, array, metadata, err
 
-    raw_results = Parallel(n_jobs=n_jobs, verbose=10)(
+    raw_results = Parallel(n_jobs=n_jobs, backend='threading', verbose=10)(
         delayed(_execute)(task) for task in tasks
     )
 

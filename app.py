@@ -483,12 +483,15 @@ def load_data_callback(event=None):
                 f"Visit {visit}: Data reduction appears incomplete (pfsMerged not found)"
             )
 
+        # Get butler_cache from session state
+        state = get_session_state()
+        butler_cache = state.get("butler_cache", {})
+
         pfsConfig, obcode_to_fibers, fiber_to_obcode = load_visit_data(
-            datastore, base_collection, visit
+            datastore, base_collection, visit, butler_cache
         )
 
-        # Update session state
-        state = get_session_state()
+        # Update session state (butler_cache already updated by get_butler_cached)
         state["visit_data"] = {
             "loaded": True,
             "visit": visit,
