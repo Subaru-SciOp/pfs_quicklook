@@ -883,11 +883,6 @@ def plot_2d_callback(event=None):
     else:
         logger.info("Using pre-loaded pfsConfig from session state (optimization)")
 
-    # Get Butler cache from session state for Butler instance reuse
-    # This avoids repeated Butler creation (saves ~0.1-0.2s per arm × 16 arms = ~1.6-3.2s)
-    butler_cache = state["butler_cache"]
-    logger.info("Using Butler cache from session state (optimization)")
-
     spectro_selection = (
         spectro_cbg.value
         if isinstance(spectro_cbg.value, list)
@@ -949,7 +944,6 @@ def plot_2d_callback(event=None):
                 scale_algo=scale_algo,
                 n_jobs=16,
                 pfsConfig_preloaded=pfs_config_shared,
-                butler_cache=butler_cache,
             )
         except Exception as e:
             logger.error(f"Failed to build 2D arrays: {e}")

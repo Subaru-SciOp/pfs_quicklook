@@ -784,7 +784,6 @@ def _build_single_2d_array(
     fiber_ids=None,
     scale_algo: str = "zscale",
     pfsConfig_preloaded=None,
-    butler_cache=None,
 ):
     """Build transformed numpy array for a single arm/spectrograph combination
 
@@ -815,10 +814,6 @@ def _build_single_2d_array(
         Pre-loaded pfsConfig object to avoid redundant Butler.get() calls.
         If provided, skips loading pfsConfig from Butler (saves ~0.177s per arm).
         Default is None (load from Butler).
-    butler_cache : dict, optional
-        Dictionary for caching Butler instances. Passed to get_butler_cached().
-        If provided, enables Butler instance reuse (saves ~0.1-0.2s per arm).
-        Default is None (no caching).
 
     Returns
     -------
@@ -832,8 +827,9 @@ def _build_single_2d_array(
         Error message if failed, None on success
     """
     try:
-        # Use cached Butler if available (optimization to avoid repeated Butler creation)
-        b = get_butler_cached(datastore, base_collection, visit, butler_cache)
+        # Create new Butler instance for each thread to avoid database connection sharing
+        # Butler's database connection (SQLAlchemy/PostgreSQL) is not thread-safe
+        b = get_butler(datastore, base_collection, visit)
         data_id = make_data_id(visit, spectrograph, arm)
 
         # data retrieval
@@ -935,7 +931,6 @@ def _run_arm_jobs(
     scale_algo: str,
     n_jobs: int,
     pfsConfig_preloaded=None,
-    butler_cache=None,
 ):
     """Execute a list of (spectrograph, arm) jobs in parallel and group results.
 
@@ -948,9 +943,7 @@ def _run_arm_jobs(
         return {}
 
     logger.info(
-        "Building 2D arrays for %d task(s) with unified parallel processing (n_jobs=%s)",
-        len(tasks),
-        n_jobs,
+        f"Building 2D arrays for {len(tasks)} task(s) with unified parallel processing (n_jobs={n_jobs})"
     )
 
     def _execute(task):
@@ -966,7 +959,6 @@ def _run_arm_jobs(
             fiber_ids,
             scale_algo,
             pfsConfig_preloaded,
-            butler_cache,
         )
         return spectrograph, arm_name, array, metadata, err
 
@@ -993,7 +985,6 @@ def build_2d_arrays_multi_spectrograph(
     scale_algo: str = "zscale",
     n_jobs: int = 16,
     pfsConfig_preloaded=None,
-    butler_cache=None,
 ):
     """Build arrays for every (spectrograph, arm) pair using a single Parallel call."""
 
@@ -1014,7 +1005,6 @@ def build_2d_arrays_multi_spectrograph(
         scale_algo,
         n_jobs,
         pfsConfig_preloaded,
-        butler_cache,
     )
 
     arm_order = {arm: idx for idx, arm in enumerate(arms)}
